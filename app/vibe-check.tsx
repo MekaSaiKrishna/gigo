@@ -5,9 +5,9 @@ import { startSession } from "../src/lib/database";
 import type { VibeLevel } from "../src/types";
 
 const vibes: { level: VibeLevel; label: string; emoji: string; description: string }[] = [
-  { level: "low", label: "Low Energy", emoji: "🔋", description: "Lighter load, fewer sets" },
-  { level: "normal", label: "Normal", emoji: "💪", description: "Standard programming" },
-  { level: "crushing", label: "Crushing It", emoji: "🔥", description: "Push the limits" },
+  { level: "low", label: "Low Energy", emoji: "🪫", description: "Lighter load, fewer sets" },
+  { level: "normal", label: "Normal", emoji: "🔋", description: "Standard programming" },
+  { level: "crushing", label: "Crushing It", emoji: "💥", description: "Push the limits" },
 ];
 
 export default function VibeCheckScreen() {
