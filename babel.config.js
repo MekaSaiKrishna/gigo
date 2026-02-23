@@ -1,17 +1,12 @@
 module.exports = function (api) {
   api.cache(true);
-
-  const isTest = process.env.NODE_ENV === "test";
-
   return {
     presets: [
-      [
-        "babel-preset-expo",
-        isTest ? {} : { jsxImportSource: "nativewind" },
-      ],
+      ["babel-preset-expo", { jsxImportSource: "nativewind" }],
+      "nativewind/babel", // This is the ONLY place it should be in v4
     ],
-    plugins: isTest
-      ? []
-      : ["nativewind/babel", "react-native-reanimated/plugin"],
+    plugins: [
+      "react-native-reanimated/plugin", // Keep this at the end
+    ],
   };
 };
