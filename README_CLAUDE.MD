@@ -112,6 +112,29 @@ When a workout ends, instead of returning to the home screen, the user is taken 
 
 ---
 
+## Bug Fix — Summary Card Not Displaying After Workout
+
+**Symptom:** After ending a workout, the summary card screen was blank — no card rendered for download/sharing.
+
+**Root Causes (3 compounding issues):**
+
+1. **Reanimated animation left card invisible** — The original code used `useSharedValue(0)` for opacity and `useAnimatedStyle` to animate it to 1 inside a `.then()` callback. The animation never triggered reliably from the JS thread, leaving the card permanently at opacity 0.
+2. **No error handling** — `getSessionSummary()` had no `.catch()`, so any database error left the screen stuck on the loading spinner forever.
+3. **No scroll wrapper** — On smaller screens the card + button overflowed with no way to scroll.
+
+**Fix:**
+- Replaced manual `useSharedValue`/`useAnimatedStyle` with Reanimated's declarative `entering={FadeIn.delay(150).duration(500)}` prop — animation is now handled entirely by the native thread.
+- Wrapped content in `ScrollView` with `contentContainerClassName="flex-grow justify-center px-6 py-10"`.
+- Added `.catch(() => setSummary(null))` and `.finally(() => setLoading(false))` for graceful error handling.
+- Added `isNaN(sessionId)` guard to handle missing/invalid route params.
+- Updated `WorkoutComplete.test.tsx` Reanimated mock to support the `FadeIn`/`ZoomIn` chainable API (`delay()`, `duration()`).
+
+**Key files changed:**
+- `app/workout-complete.tsx` — animation + error handling + scroll
+- `__tests__/WorkoutComplete.test.tsx` — updated Reanimated mock
+
+---
+
 ## Current File Structure
 
 ```
