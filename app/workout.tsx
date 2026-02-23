@@ -123,7 +123,7 @@ export default function WorkoutScreen() {
         style: "destructive",
         onPress: async () => {
           await endSession(sessionId);
-          router.replace("/");
+          router.replace(`/workout-complete?sessionId=${sessionId}`);
         },
       },
     ]);

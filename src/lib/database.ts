@@ -1,6 +1,6 @@
 import * as SQLite from "expo-sqlite";
 import { EXERCISE_SEED } from "../data/exercises";
-import type { Exercise, Session, WorkoutSet, VibeLevel, GhostValues } from "../types";
+import type { Exercise, Session, WorkoutSet, VibeLevel, GhostValues, ExerciseSummary, SessionSummary } from "../types";
 
 const DB_NAME = "gigofit.db";
 
@@ -168,4 +168,53 @@ export async function getTotalVolume(): Promise<number> {
     "SELECT COALESCE(SUM(weight * reps), 0) as total FROM sets"
   );
   return row?.total ?? 0;
+}
+
+// ── Session Summary ────────────────────────────────────────
+
+export async function getSessionSummary(sessionId: number): Promise<SessionSummary | null> {
+  const db = await getDatabase();
+
+  const session = await db.getFirstAsync<Session>(
+    "SELECT * FROM sessions WHERE id = ?",
+    [sessionId]
+  );
+  if (!session) return null;
+
+  const volumeRow = await db.getFirstAsync<{ total: number }>(
+    "SELECT COALESCE(SUM(weight * reps), 0) as total FROM sets WHERE session_id = ?",
+    [sessionId]
+  );
+
+  const setCountRow = await db.getFirstAsync<{ count: number }>(
+    "SELECT COUNT(*) as count FROM sets WHERE session_id = ?",
+    [sessionId]
+  );
+
+  const exercises = await db.getAllAsync<ExerciseSummary>(
+    `SELECT e.name as exercise_name,
+            COUNT(s.id) as set_count,
+            COALESCE(SUM(s.weight * s.reps), 0) as total_volume
+     FROM sets s JOIN exercises e ON s.exercise_id = e.id
+     WHERE s.session_id = ?
+     GROUP BY s.exercise_id
+     ORDER BY s.created_at ASC`,
+    [sessionId]
+  );
+
+  // Calculate duration in minutes
+  let durationMinutes = 0;
+  if (session.started_at && session.ended_at) {
+    const start = new Date(session.started_at + "Z").getTime();
+    const end = new Date(session.ended_at + "Z").getTime();
+    durationMinutes = Math.max(1, Math.round((end - start) / 60000));
+  }
+
+  return {
+    session,
+    totalVolume: volumeRow?.total ?? 0,
+    totalSets: setCountRow?.count ?? 0,
+    durationMinutes,
+    exercises,
+  };
 }
