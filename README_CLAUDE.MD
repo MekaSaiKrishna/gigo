@@ -24,9 +24,9 @@ Scaffolded the entire GiGoFit Expo project from an empty repo into a runnable, t
 
 ---
 
-## Phase 2 — Data Layer, Workout CRUD, Ghosting, Sectioned Picker, and Demo GIFs
+## Phase 2 — Data Layer, Workout CRUD, Ghosting, Sectioned Picker, Demo GIFs, and Summary Card
 
-Built the core data engine, full workout logging flow, grouped exercise picker, and exercise demo previews.
+Built the core data engine, full workout logging flow, grouped exercise picker, exercise demo previews, and a shareable workout completion card.
 
 ### Data Layer
 
@@ -38,9 +38,11 @@ Built the core data engine, full workout logging flow, grouped exercise picker, 
 - `addSet()` / `deleteSet()` — log and remove individual sets.
 - `getGhostValues(exerciseId)` — fetch last weight/reps for any exercise.
 - `getSessionVolume()` / `getTotalVolume()` — real-time volume tracking.
+- `getSessionSummary(sessionId)` — aggregates session, sets, exercises, volume, and duration into a single `SessionSummary` object for the completion card.
 
 **Shared Types** (`src/types.ts`)
 - `VibeLevel`, `Exercise`, `Session`, `WorkoutSet`, `GhostValues`, `VIBE_MULTIPLIERS`.
+- `ExerciseSummary`, `SessionSummary` — aggregated data types for the completion flow.
 
 ### Workout Screen
 
@@ -65,25 +67,48 @@ The exercise picker uses a `SectionList` with sticky headers grouped by muscle g
 | **Forearms** | Wrist Curl, Farmer's Walk |
 | **Full Body** | Burpee |
 
-Key files:
-- `src/data/exercise-meta.ts` — `MUSCLE_GROUP_LABELS`, `MUSCLE_GROUP_ORDER`, and `EXERCISE_DEMO_GIFS` mapping.
-- Section headers render as sticky uppercase labels in the primary color.
-- Exercises within each section show name + category (compound/isolation/bodyweight).
-
 ### Exercise Demo GIFs
 
 When you select an exercise from the picker, a **placeholder demo GIF** appears below the weight/rep inputs showing proper form.
 
-**How it works:**
 - `src/data/exercise-meta.ts` maps every exercise name to a placeholder GIF URL.
 - `src/components/ExerciseDemo.tsx` renders the GIF with a loading spinner and error fallback.
-- If the GIF fails to load or no URL exists, a graceful fallback shows "Demo coming soon for [exercise]".
-- The demo only appears when an exercise is selected — otherwise the space is given to the set list.
+- Graceful fallback for missing URLs or load failures.
 
-**To replace with real assets later:**
-1. Drop your own GIFs into `assets/demos/` or host them on a CDN.
-2. Update the URLs in `EXERCISE_DEMO_GIFS` in `src/data/exercise-meta.ts`.
-3. For offline support, switch `Image` source from `{ uri }` to `require()` with local files.
+### Workout Completion — SummaryCard
+
+When a workout ends, instead of returning to the home screen, the user is taken to a **full-screen summary card** (`app/workout-complete.tsx`) that animates into view.
+
+**Design — "Sleek & Sexy" Dark Card:**
+- 1:1 square aspect ratio with `expo-linear-gradient` background (Slate-950 palette: `#0f172a` -> `#1e293b` -> `#0f172a`).
+- **Tight tracking** (`letterSpacing: 3-6`) on all uppercase header labels (`TOTAL VOLUME`, `DURATION`, `SETS`, `WORKOUT COMPLETE`, `GIGOFIT`).
+- **Muted secondary text** — labels use `text-slate-400`/`text-slate-500` for a subtle, high-contrast hierarchy against the bold white numbers.
+- Large bold 52px total volume number with negative letter-spacing for a compressed, modern look.
+- Duration and total sets displayed side-by-side with a thin slate divider.
+- Exercise breakdown list (up to 5 exercises with `+N more` overflow) in a frosted `white/5` container.
+- Vibe indicator chip at the top with the session's emoji and uppercase label.
+- `GIGOFIT` branding at the bottom in wide-tracked slate-600 text.
+
+**Capture & Share:**
+- Card wrapped in `react-native-view-shot` (`ViewShot` ref).
+- "Download Image" button calls `captureRef()` to render the card as a high-quality PNG, then `expo-sharing` to trigger the native share sheet.
+- Error handling for devices where sharing is unavailable.
+
+**Animation:**
+- `react-native-reanimated` entrance: the card fades in (opacity 0 -> 1) and scales up (0.9 -> 1.0) with a 150ms delay and 500ms cubic ease-out. Creates a satisfying "reveal" when the workout ends.
+
+**Data Integration:**
+- `getSessionSummary(sessionId)` fetches the full session from SQLite — session metadata, all sets grouped by exercise, total volume, total set count, and duration (computed from `started_at` / `ended_at` timestamps).
+- The component accepts a `SessionSummary` object as props.
+- The `workout-complete` screen header is hidden for a clean full-screen experience.
+
+**Flow:** `End Session` -> `endSession(id)` closes the DB session -> navigate to `/workout-complete?sessionId=N` -> data loads -> card animates in -> user can download/share or go home.
+
+**Key files:**
+- `src/components/SummaryCard.tsx` — the card component with gradient, typography, view-shot, and sharing.
+- `app/workout-complete.tsx` — the screen with Reanimated animation and data fetching.
+- `src/types.ts` — `ExerciseSummary` and `SessionSummary` types.
+- `src/lib/database.ts` — `getSessionSummary()` query.
 
 ---
 
@@ -95,21 +120,25 @@ app/
   index.tsx                 Home screen — Start Session, Exercises, Ascent
   vibe-check.tsx            Energy selector -> creates DB session -> navigates
   workout.tsx               Workout screen with sectioned picker + demo GIFs
+  workout-complete.tsx      Summary card screen with Reanimated entrance
   exercises.tsx             Exercise library placeholder
   ascent.tsx                Altitude tracker placeholder
 
 src/
-  types.ts                  Shared types + vibe multipliers
+  types.ts                  Shared types, vibe multipliers, SessionSummary
   data/exercises.ts         42-exercise seed data
   data/exercise-meta.ts     Muscle group labels, ordering, demo GIF URLs
   components/ExerciseDemo.tsx   GIF demo viewer with loading/error states
-  lib/database.ts           SQLite init, seeding, and all CRUD functions
+  components/SummaryCard.tsx    Shareable 1:1 workout summary card
+  lib/database.ts           SQLite init, seeding, CRUD, and session summary
   constants/theme.ts        Color palette + peak height constant
 
 __tests__/
   HomeScreen.test.tsx       4 tests
   VibeCheck.test.tsx        3 tests
   WorkoutScreen.test.tsx    7 tests — picker sections, demo rendering, vibe
+  WorkoutComplete.test.tsx  4 tests — loading, summary card, back button, error
+  SummaryCard.test.tsx      11 tests — volume, duration, vibe, exercises, branding
   ExerciseDemo.test.tsx     2 tests — known exercise, fallback for unknown
   exercises.test.ts         4 tests — seed count, fields, groups, no duplicates
   exercise-meta.test.ts     4 tests — labels, ordering, GIF coverage, URL validity
@@ -120,7 +149,7 @@ __tests__/
 
 ```bash
 npm start              # Dev server — scan QR with Expo Go
-npm test               # Run all 27 tests
+npm test               # Run all 42 tests
 npm run test:watch     # Re-run on save
 npm run test:coverage  # Coverage report
 ```
@@ -128,6 +157,6 @@ npm run test:coverage  # Coverage report
 ## Test Results
 
 ```
-Test Suites: 7 passed, 7 total
-Tests:       27 passed, 27 total
+Test Suites: 9 passed, 9 total
+Tests:       42 passed, 42 total
 ```

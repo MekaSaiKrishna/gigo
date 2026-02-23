@@ -43,6 +43,22 @@ export interface GhostValues {
   reps: number;
 }
 
+/** Aggregated exercise stats for a session summary */
+export interface ExerciseSummary {
+  exercise_name: string;
+  set_count: number;
+  total_volume: number;
+}
+
+/** Full session summary for the completion card */
+export interface SessionSummary {
+  session: Session;
+  totalVolume: number;
+  totalSets: number;
+  durationMinutes: number;
+  exercises: ExerciseSummary[];
+}
+
 /** Vibe-based rep/set multipliers */
 export const VIBE_MULTIPLIERS: Record<VibeLevel, { sets: number; reps: number }> = {
   low: { sets: 0.75, reps: 0.8 },

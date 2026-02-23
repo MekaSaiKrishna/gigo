@@ -13,7 +13,9 @@ export default function RootLayout() {
           headerTitleStyle: { fontWeight: "bold" },
           contentStyle: { backgroundColor: "#1a1a2e" },
         }}
-      />
+      >
+        <Stack.Screen name="workout-complete" options={{ headerShown: false }} />
+      </Stack>
     </>
   );
 }
