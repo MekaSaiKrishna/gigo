@@ -10,16 +10,22 @@ jest.mock("expo-router", () => ({
 
 jest.mock("react-native-reanimated", () => {
   const { View } = require("react-native");
+  const chainable = () => {
+    const obj: any = {};
+    obj.delay = () => obj;
+    obj.duration = () => obj;
+    obj.springify = () => obj;
+    return obj;
+  };
   return {
     __esModule: true,
     default: {
-      View: ({ children, style }: any) => <View style={style}>{children}</View>,
+      View: ({ children, style, entering, ...rest }: any) => (
+        <View style={style} {...rest}>{children}</View>
+      ),
     },
-    useSharedValue: (v: number) => ({ value: v }),
-    useAnimatedStyle: (fn: () => any) => fn(),
-    withTiming: (v: number) => v,
-    withDelay: (_d: number, v: number) => v,
-    Easing: { out: (fn: any) => fn, cubic: (v: number) => v },
+    FadeIn: chainable(),
+    ZoomIn: chainable(),
   };
 });
 

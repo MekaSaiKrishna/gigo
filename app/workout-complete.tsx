@@ -1,13 +1,7 @@
 import { useEffect, useState } from "react";
-import { View, Text, Pressable, ActivityIndicator } from "react-native";
+import { View, Text, Pressable, ActivityIndicator, ScrollView } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withDelay,
-  Easing,
-} from "react-native-reanimated";
+import Animated, { FadeIn, ZoomIn } from "react-native-reanimated";
 import { getSessionSummary } from "../src/lib/database";
 import SummaryCard from "../src/components/SummaryCard";
 import type { SessionSummary } from "../src/types";
@@ -20,31 +14,23 @@ export default function WorkoutCompleteScreen() {
   const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Reanimated shared values
-  const opacity = useSharedValue(0);
-  const scale = useSharedValue(0.9);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ scale: scale.value }],
-  }));
-
   useEffect(() => {
-    getSessionSummary(sessionId).then((data) => {
-      setSummary(data);
+    if (!sessionId || isNaN(sessionId)) {
       setLoading(false);
+      return;
+    }
 
-      // Trigger entrance animation
-      opacity.value = withDelay(
-        150,
-        withTiming(1, { duration: 500, easing: Easing.out(Easing.cubic) })
-      );
-      scale.value = withDelay(
-        150,
-        withTiming(1, { duration: 500, easing: Easing.out(Easing.cubic) })
-      );
-    });
-  }, [sessionId, opacity, scale]);
+    getSessionSummary(sessionId)
+      .then((data) => {
+        setSummary(data);
+      })
+      .catch(() => {
+        setSummary(null);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [sessionId]);
 
   if (loading) {
     return (
@@ -66,17 +52,24 @@ export default function WorkoutCompleteScreen() {
   }
 
   return (
-    <View className="flex-1 bg-background px-6 justify-center">
-      <Animated.View style={animatedStyle}>
+    <ScrollView
+      className="flex-1 bg-background"
+      contentContainerClassName="flex-grow justify-center px-6 py-10"
+    >
+      <Animated.View
+        entering={FadeIn.delay(150).duration(500)}
+      >
         <SummaryCard summary={summary} />
       </Animated.View>
 
-      <Pressable
-        className="bg-surface rounded-2xl px-10 py-4 mt-4 w-full items-center border border-accent"
-        onPress={() => router.replace("/")}
-      >
-        <Text className="text-text text-base">Back to Home</Text>
-      </Pressable>
-    </View>
+      <Animated.View entering={FadeIn.delay(400).duration(400)}>
+        <Pressable
+          className="bg-surface rounded-2xl px-10 py-4 mt-4 w-full items-center border border-accent"
+          onPress={() => router.replace("/")}
+        >
+          <Text className="text-text text-base">Back to Home</Text>
+        </Pressable>
+      </Animated.View>
+    </ScrollView>
   );
 }
