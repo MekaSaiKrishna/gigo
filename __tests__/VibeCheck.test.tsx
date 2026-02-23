@@ -1,10 +1,14 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react-native";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
 import VibeCheckScreen from "../app/vibe-check";
 
 const mockPush = jest.fn();
 jest.mock("expo-router", () => ({
   useRouter: () => ({ push: mockPush }),
+}));
+
+jest.mock("../src/lib/database", () => ({
+  startSession: jest.fn(() => Promise.resolve(42)),
 }));
 
 describe("VibeCheckScreen", () => {
@@ -24,9 +28,11 @@ describe("VibeCheckScreen", () => {
     expect(screen.getByText("Crushing It")).toBeTruthy();
   });
 
-  it("navigates to workout on vibe selection", () => {
+  it("creates a session and navigates to workout on vibe selection", async () => {
     render(<VibeCheckScreen />);
     fireEvent.press(screen.getByText("Normal"));
-    expect(mockPush).toHaveBeenCalledWith("/workout");
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/workout?sessionId=42&vibe=normal");
+    });
   });
 });

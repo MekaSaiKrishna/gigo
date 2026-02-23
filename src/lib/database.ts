@@ -1,4 +1,6 @@
 import * as SQLite from "expo-sqlite";
+import { EXERCISE_SEED } from "../data/exercises";
+import type { Exercise, Session, WorkoutSet, VibeLevel, GhostValues } from "../types";
 
 const DB_NAME = "gigofit.db";
 
@@ -41,4 +43,129 @@ async function initializeDatabase(database: SQLite.SQLiteDatabase) {
       FOREIGN KEY (exercise_id) REFERENCES exercises(id)
     );
   `);
+
+  await seedExercises(database);
+}
+
+async function seedExercises(database: SQLite.SQLiteDatabase) {
+  const existing = await database.getFirstAsync<{ count: number }>(
+    "SELECT COUNT(*) as count FROM exercises"
+  );
+  if (existing && existing.count > 0) return;
+
+  const placeholders = EXERCISE_SEED.map(() => "(?, ?, ?)").join(", ");
+  const values = EXERCISE_SEED.flatMap((e) => [e.name, e.muscle_group, e.category]);
+  await database.runAsync(
+    `INSERT INTO exercises (name, muscle_group, category) VALUES ${placeholders}`,
+    values
+  );
+}
+
+// ── Exercises ──────────────────────────────────────────────
+
+export async function getAllExercises(): Promise<Exercise[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<Exercise>(
+    "SELECT * FROM exercises ORDER BY muscle_group, name"
+  );
+}
+
+export async function getExercisesByMuscleGroup(muscleGroup: string): Promise<Exercise[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<Exercise>(
+    "SELECT * FROM exercises WHERE muscle_group = ? ORDER BY name",
+    [muscleGroup]
+  );
+}
+
+// ── Sessions ───────────────────────────────────────────────
+
+export async function startSession(vibe: VibeLevel): Promise<number> {
+  const db = await getDatabase();
+  const result = await db.runAsync(
+    "INSERT INTO sessions (vibe) VALUES (?)",
+    [vibe]
+  );
+  return result.lastInsertRowId;
+}
+
+export async function endSession(sessionId: number): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE sessions SET ended_at = datetime('now') WHERE id = ?",
+    [sessionId]
+  );
+}
+
+export async function getSession(sessionId: number): Promise<Session | null> {
+  const db = await getDatabase();
+  return db.getFirstAsync<Session>(
+    "SELECT * FROM sessions WHERE id = ?",
+    [sessionId]
+  );
+}
+
+// ── Sets ───────────────────────────────────────────────────
+
+export async function addSet(
+  sessionId: number,
+  exerciseId: number,
+  weight: number,
+  reps: number
+): Promise<number> {
+  const db = await getDatabase();
+  const result = await db.runAsync(
+    "INSERT INTO sets (session_id, exercise_id, weight, reps) VALUES (?, ?, ?, ?)",
+    [sessionId, exerciseId, weight, reps]
+  );
+  return result.lastInsertRowId;
+}
+
+export async function deleteSet(setId: number): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync("DELETE FROM sets WHERE id = ?", [setId]);
+}
+
+export async function getSetsForSession(sessionId: number): Promise<(WorkoutSet & { exercise_name: string })[]> {
+  const db = await getDatabase();
+  return db.getAllAsync(
+    `SELECT s.*, e.name as exercise_name
+     FROM sets s JOIN exercises e ON s.exercise_id = e.id
+     WHERE s.session_id = ?
+     ORDER BY s.created_at DESC`,
+    [sessionId]
+  );
+}
+
+// ── Ghosting (last weight/reps recall) ─────────────────────
+
+export async function getGhostValues(exerciseId: number): Promise<GhostValues | null> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ weight: number; reps: number }>(
+    `SELECT weight, reps FROM sets
+     WHERE exercise_id = ?
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [exerciseId]
+  );
+  return row ?? null;
+}
+
+// ── Volume ─────────────────────────────────────────────────
+
+export async function getSessionVolume(sessionId: number): Promise<number> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ total: number }>(
+    "SELECT COALESCE(SUM(weight * reps), 0) as total FROM sets WHERE session_id = ?",
+    [sessionId]
+  );
+  return row?.total ?? 0;
+}
+
+export async function getTotalVolume(): Promise<number> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ total: number }>(
+    "SELECT COALESCE(SUM(weight * reps), 0) as total FROM sets"
+  );
+  return row?.total ?? 0;
 }
