@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
   Pressable,
   TextInput,
   FlatList,
+  SectionList,
   Alert,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -18,9 +19,16 @@ import {
   getSessionVolume,
 } from "../src/lib/database";
 import { VIBE_MULTIPLIERS } from "../src/types";
-import type { Exercise, VibeLevel, WorkoutSet } from "../src/types";
+import { MUSCLE_GROUP_LABELS, MUSCLE_GROUP_ORDER } from "../src/data/exercise-meta";
+import ExerciseDemo from "../src/components/ExerciseDemo";
+import type { Exercise, VibeLevel, WorkoutSet, MuscleGroup } from "../src/types";
 
 type SetWithName = WorkoutSet & { exercise_name: string };
+
+interface ExerciseSection {
+  title: string;
+  data: Exercise[];
+}
 
 export default function WorkoutScreen() {
   const { sessionId: rawId, vibe: rawVibe } = useLocalSearchParams<{
@@ -38,6 +46,22 @@ export default function WorkoutScreen() {
   const [reps, setReps] = useState("");
   const [volume, setVolume] = useState(0);
   const [showPicker, setShowPicker] = useState(false);
+
+  // Group exercises by muscle group into sections
+  const sections: ExerciseSection[] = useMemo(() => {
+    const grouped = new Map<MuscleGroup, Exercise[]>();
+    for (const ex of exercises) {
+      const list = grouped.get(ex.muscle_group) ?? [];
+      list.push(ex);
+      grouped.set(ex.muscle_group, list);
+    }
+    return MUSCLE_GROUP_ORDER
+      .filter((mg) => grouped.has(mg))
+      .map((mg) => ({
+        title: MUSCLE_GROUP_LABELS[mg],
+        data: grouped.get(mg)!,
+      }));
+  }, [exercises]);
 
   // Load exercises on mount
   useEffect(() => {
@@ -83,7 +107,6 @@ export default function WorkoutScreen() {
     }
     await addSet(sessionId, selectedExercise.id, w, r);
     await refreshSets();
-    // Keep weight, clear reps for next set
     setReps("");
   };
 
@@ -114,7 +137,7 @@ export default function WorkoutScreen() {
   const multiplier = VIBE_MULTIPLIERS[vibe];
   const vibeLabel = vibe === "low" ? "Low Energy" : vibe === "crushing" ? "Crushing It" : "Normal";
 
-  // ── Exercise Picker ────────────────────────────────────
+  // ── Exercise Picker (SectionList grouped by body part) ──
   if (showPicker) {
     return (
       <View className="flex-1 bg-background pt-4">
@@ -124,17 +147,25 @@ export default function WorkoutScreen() {
             <Text className="text-primary text-base">Cancel</Text>
           </Pressable>
         </View>
-        <FlatList
-          data={exercises}
+        <SectionList
+          sections={sections}
           keyExtractor={(item) => String(item.id)}
+          stickySectionHeadersEnabled
+          renderSectionHeader={({ section: { title } }) => (
+            <View className="bg-background px-6 py-3 border-b border-accent">
+              <Text className="text-primary text-sm font-bold uppercase tracking-widest">
+                {title}
+              </Text>
+            </View>
+          )}
           renderItem={({ item }) => (
             <Pressable
-              className="px-6 py-4 border-b border-accent"
+              className="px-6 py-4 border-b border-accent/30"
               onPress={() => selectExercise(item)}
             >
               <Text className="text-text text-base font-bold">{item.name}</Text>
               <Text className="text-text-muted text-xs capitalize">
-                {item.muscle_group.replace("_", " ")} · {item.category}
+                {item.category}
               </Text>
             </Pressable>
           )}
@@ -203,6 +234,11 @@ export default function WorkoutScreen() {
           </Pressable>
         </View>
       </View>
+
+      {/* Exercise Demo GIF */}
+      {selectedExercise && (
+        <ExerciseDemo exerciseName={selectedExercise.name} />
+      )}
 
       {/* Sets List */}
       <FlatList

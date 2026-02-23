@@ -12,7 +12,8 @@ jest.mock("../src/lib/database", () => ({
   getAllExercises: jest.fn(() =>
     Promise.resolve([
       { id: 1, name: "Bench Press", muscle_group: "chest", category: "compound" },
-      { id: 2, name: "Barbell Squat", muscle_group: "legs", category: "compound" },
+      { id: 2, name: "Push-Up", muscle_group: "chest", category: "bodyweight" },
+      { id: 3, name: "Barbell Squat", muscle_group: "legs", category: "compound" },
     ])
   ),
   getSetsForSession: jest.fn(() => Promise.resolve([])),
@@ -22,6 +23,13 @@ jest.mock("../src/lib/database", () => ({
   deleteSet: jest.fn(() => Promise.resolve()),
   endSession: jest.fn(() => Promise.resolve()),
 }));
+
+jest.mock("../src/components/ExerciseDemo", () => {
+  const { Text } = require("react-native");
+  return function MockExerciseDemo({ exerciseName }: { exerciseName: string }) {
+    return <Text testID="exercise-demo">{`Demo: ${exerciseName}`}</Text>;
+  };
+});
 
 describe("WorkoutScreen", () => {
   beforeEach(() => {
@@ -47,17 +55,22 @@ describe("WorkoutScreen", () => {
     });
   });
 
-  it("opens exercise picker on tap", async () => {
+  it("opens exercise picker grouped by body part", async () => {
     render(<WorkoutScreen />);
     fireEvent.press(screen.getByText("Tap to select exercise"));
     await waitFor(() => {
       expect(screen.getByText("Pick Exercise")).toBeTruthy();
+      // Section headers
+      expect(screen.getByText("Chest")).toBeTruthy();
+      expect(screen.getByText("Legs")).toBeTruthy();
+      // Exercises under sections
       expect(screen.getByText("Bench Press")).toBeTruthy();
+      expect(screen.getByText("Push-Up")).toBeTruthy();
       expect(screen.getByText("Barbell Squat")).toBeTruthy();
     });
   });
 
-  it("selects an exercise from the picker", async () => {
+  it("selects an exercise and shows demo", async () => {
     render(<WorkoutScreen />);
     fireEvent.press(screen.getByText("Tap to select exercise"));
     await waitFor(() => {
@@ -65,9 +78,18 @@ describe("WorkoutScreen", () => {
     });
     fireEvent.press(screen.getByText("Bench Press"));
     await waitFor(() => {
-      expect(screen.getByText("Bench Press")).toBeTruthy();
+      // Picker closes
       expect(screen.queryByText("Pick Exercise")).toBeNull();
+      // Exercise name shown in selector
+      expect(screen.getByText("Bench Press")).toBeTruthy();
+      // Demo component rendered
+      expect(screen.getByText("Demo: Bench Press")).toBeTruthy();
     });
+  });
+
+  it("does not show demo when no exercise is selected", () => {
+    render(<WorkoutScreen />);
+    expect(screen.queryByTestId("exercise-demo")).toBeNull();
   });
 
   it("displays vibe info", () => {
