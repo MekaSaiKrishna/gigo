@@ -1,4 +1,4 @@
-#GiGoFit 🏔️
+# GiGoFit 🏔️
 Minimalist Fitness. Maximum Ascent.
 
 GiGoFit is a zero-friction, privacy-first fitness utility designed for those who want to spend more time lifting and less time scrolling. No accounts, no ads—just you and the mountain.
