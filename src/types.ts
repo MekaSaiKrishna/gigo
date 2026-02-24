@@ -23,9 +23,11 @@ export interface Exercise {
 
 export interface Session {
   id: number;
-  started_at: string;
-  ended_at: string | null;
+  start_time: number;
+  end_time: number | null;
   vibe: VibeLevel;
+  elapsed_time: number;
+  is_paused: boolean;
 }
 
 export interface WorkoutSet {

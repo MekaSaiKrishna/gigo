@@ -33,9 +33,9 @@ export const MUSCLE_GROUP_ORDER: MuscleGroup[] = [
  * These use free, publicly-available exercise illustration GIFs.
  * Replace with your own assets or a CDN as the app matures.
  */
-export const EXERCISE_DEMO_GIFS: Record<string, string> = {
+export const EXERCISE_DEMO_GIFS: Record<string, string | number> = {
   // Chest
-  "Bench Press": "https://media.tenor.com/bRE0x0z3IlMAAAAM/exercise-fitness.gif",
+  "Bench Press": require("../../assets/benchpressgif.gif"),
   "Incline Dumbbell Press": "https://media.tenor.com/EY3vUUMFoYMAAAAM/incline-press.gif",
   "Dumbbell Fly": "https://media.tenor.com/ZRuvfmq-M3EAAAAM/dumbbell-fly.gif",
   "Cable Crossover": "https://media.tenor.com/oSFIM0Xs5BMAAAAM/cable-crossover.gif",

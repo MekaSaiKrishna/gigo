@@ -1,19 +1,23 @@
 import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
+import { Alert } from "react-native";
 import VibeCheckScreen from "../app/vibe-check";
 
 const mockPush = jest.fn();
+const mockStartSession = jest.fn();
 jest.mock("expo-router", () => ({
   useRouter: () => ({ push: mockPush }),
 }));
 
 jest.mock("../src/lib/database", () => ({
-  startSession: jest.fn(() => Promise.resolve(42)),
+  startSession: (vibe: string) => mockStartSession(vibe),
 }));
 
 describe("VibeCheckScreen", () => {
   beforeEach(() => {
     mockPush.mockClear();
+    mockStartSession.mockReset();
+    jest.spyOn(Alert, "alert").mockImplementation(() => undefined);
   });
 
   it("renders the vibe check header", () => {
@@ -29,10 +33,26 @@ describe("VibeCheckScreen", () => {
   });
 
   it("creates a session and navigates to workout on vibe selection", async () => {
+    mockStartSession.mockResolvedValue(42);
     render(<VibeCheckScreen />);
     fireEvent.press(screen.getByText("Normal"));
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith("/workout?sessionId=42&vibe=normal");
+    });
+  });
+
+  it("shows an alert and does not navigate when session creation fails", async () => {
+    mockStartSession.mockRejectedValue(new Error("db down"));
+    render(<VibeCheckScreen />);
+
+    fireEvent.press(screen.getByText("Low Energy"));
+
+    await waitFor(() => {
+      expect(Alert.alert).toHaveBeenCalledWith(
+        "Error",
+        "Unable to start a session right now. Please try again."
+      );
+      expect(mockPush).not.toHaveBeenCalled();
     });
   });
 });

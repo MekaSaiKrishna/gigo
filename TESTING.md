@@ -1,241 +1,131 @@
-# GiGoFit Testing Guide
+# TESTING.md — GiGoFit Test Plan (Current)
 
-This document covers how to test GiGoFit at every stage of development — from running unit tests to manually verifying features on a real device.
-
----
-
-## 1. Running the App (Manual Testing)
-
-### Prerequisites
-- Node.js 18+
-- Expo Go app installed on your phone ([iOS](https://apps.apple.com/app/expo-go/id982107779) / [Android](https://play.google.com/store/apps/details?id=host.exp.exponent))
-- Or: Android Emulator / iOS Simulator
-
-### Start the dev server
+## Quick Run
 ```bash
-npm start
-```
-This launches Expo's dev server. You'll see a QR code in the terminal.
-
-### On a physical device
-1. Open Expo Go on your phone
-2. Scan the QR code from the terminal
-3. The app loads and hot-reloads on every save
-
-### On an emulator/simulator
-```bash
-npm run android   # Launches Android emulator
-npm run ios       # Launches iOS simulator (macOS only)
+npm run doctor:config
+npm test
+npm run test:watch
+npm run test:coverage
 ```
 
-### On the web (quick preview)
-```bash
-npm run web
-```
-Opens the app in your browser. Useful for layout checks, but native features (SQLite, Lottie) won't work here.
-
----
-
-## 2. Automated Tests
-
-### Unit & Component Tests (Jest + React Native Testing Library)
-
-```bash
-npm test              # Run all tests once
-npm run test:watch    # Re-run on file changes (great during development)
-npm run test:coverage # Generate a coverage report
-```
-
-### What to test
-
-| Layer | What | Example |
-|-------|------|---------|
-| **Screens** | Renders correct content, responds to presses | "Start Session button appears", "Vibe selection navigates to /workout" |
-| **Components** | Props render correctly, callbacks fire | "ExerciseCard shows exercise name", "onPress fires with exercise id" |
-| **Data/Lib** | Database queries return correct results | "insertSet stores weight and reps", "getLastSet returns ghost values" |
-| **Utils** | Pure functions return correct output | "volumeToAltitude converts 10000kg to 125m" |
-
-### Writing a test
-
-Tests live in `__tests__/`. Name them `<Thing>.test.tsx`.
-
-```tsx
-import { render, screen, fireEvent } from "@testing-library/react-native";
-import MyComponent from "../app/my-component";
-
-describe("MyComponent", () => {
-  it("renders the title", () => {
-    render(<MyComponent />);
-    expect(screen.getByText("Expected Title")).toBeTruthy();
-  });
-
-  it("calls onPress when tapped", () => {
-    const onPress = jest.fn();
-    render(<MyComponent onPress={onPress} />);
-    fireEvent.press(screen.getByText("Tap Me"));
-    expect(onPress).toHaveBeenCalled();
-  });
-});
-```
-
-### Mocking Expo modules
-
-Many Expo modules need mocks in tests (they don't run outside a device). Common patterns:
-
-```tsx
-// Mock expo-router
-jest.mock("expo-router", () => ({
-  Link: ({ children }) => children,
-  useRouter: () => ({ push: jest.fn(), back: jest.fn() }),
-}));
-
-// Mock expo-sqlite
-jest.mock("expo-sqlite", () => ({
-  openDatabaseAsync: jest.fn(() => ({
-    execAsync: jest.fn(),
-    getAllAsync: jest.fn(() => []),
-    runAsync: jest.fn(),
-  })),
-}));
-
-// Mock AsyncStorage
-jest.mock("@react-native-async-storage/async-storage", () =>
-  require("@react-native-async-storage/async-storage/jest/async-storage-mock")
-);
-```
-
----
-
-## 3. Testing Checklist Per Feature
-
-Use this checklist as you build each feature.
-
-### Home Screen
-- [ ] App title "GiGoFit" is visible
-- [ ] Tagline is visible
-- [ ] "Start Session" button navigates to Vibe Check
-- [ ] "Exercise Library" button navigates to exercises
-- [ ] "The Ascent" button navigates to ascent view
-- [ ] Dark theme renders correctly (dark background, light text)
-
-### Vibe Check
-- [ ] All three vibe options are displayed
-- [ ] Tapping any option navigates to the workout screen
-- [ ] Selected vibe is stored for the session
-- [ ] Descriptions match energy levels
-
-### Workout Screen (Phase 2-3)
-- [ ] Exercises can be selected from the library
-- [ ] Weight and rep inputs accept numbers
-- [ ] Ghost values (last weight/reps) pre-fill inputs
-- [ ] Adding a set updates the session total
-- [ ] Session can be ended / saved
-- [ ] Vibe-based adjustments reflect in suggested reps
-
-### Exercise Library (Phase 3)
-- [ ] All 42 exercises are listed
-- [ ] Exercises grouped by muscle group
-- [ ] Tapping an exercise shows detail/animation
-- [ ] Muscle-highlighting animation plays correctly
-- [ ] Search/filter works
-
-### The Ascent (Phase 4)
-- [ ] Current altitude displays correctly
-- [ ] Altitude updates after logging sets
-- [ ] Pixel character is visible on the mountain
-- [ ] Progress persists across app restarts
-- [ ] 8,000m peak is the cap
-
-### Share the Peak (Phase 5)
-- [ ] Generated image is 9:16 aspect ratio
-- [ ] Shows current altitude and daily volume
-- [ ] Share/download works on iOS and Android
-
----
-
-## 4. Database Testing
-
-SQLite operations can be tested by mocking `expo-sqlite`:
-
-```tsx
-import { getDatabase } from "../src/lib/database";
-
-jest.mock("expo-sqlite", () => {
-  const mockDb = {
-    execAsync: jest.fn(),
-    getAllAsync: jest.fn(),
-    runAsync: jest.fn(),
-  };
+## Install/Boot Recovery Checks
+- Run `npm run doctor:config` before `npm install` if config corruption is suspected.
+- Confirm `react-native-calendars` is pinned to `1.1313.0` (the previous `^1.1319.0` does not exist on npm and causes `ETARGET`).
+- Ensure `babel.config.js` is non-empty and null-byte free. Current known-good config:
+```js
+module.exports = function (api) {
+  api.cache.using(() => process.env.NODE_ENV);
   return {
-    openDatabaseAsync: jest.fn(() => Promise.resolve(mockDb)),
+    presets: [
+      ["babel-preset-expo", { jsxImportSource: "nativewind" }],
+      "nativewind/babel"
+    ]
   };
-});
-
-describe("Database", () => {
-  it("initializes tables on first open", async () => {
-    const db = await getDatabase();
-    expect(db.execAsync).toHaveBeenCalledWith(
-      expect.stringContaining("CREATE TABLE IF NOT EXISTS exercises")
-    );
-  });
-});
+};
 ```
-
-For integration tests with real SQLite, run them on a device/emulator since SQLite requires native bindings.
-
----
-
-## 5. Manual Testing Scenarios
-
-These are things that automated tests can't easily cover:
-
-### Performance
-- [ ] App launches in under 3 seconds (the "zero friction" goal)
-- [ ] Scrolling through exercise list is smooth (60fps)
-- [ ] Lottie animations play without frame drops
-- [ ] No memory leaks during long workout sessions
-
-### Persistence
-- [ ] Kill the app mid-session, reopen — data is still there
-- [ ] Workout history survives app updates
-- [ ] Ghost values persist across sessions
-
-### Edge Cases
-- [ ] Enter 0 weight or 0 reps — handled gracefully
-- [ ] Very large numbers (e.g., 999kg x 999reps) — no UI overflow
-- [ ] Rotate device — layout doesn't break (or is locked to portrait)
-- [ ] Low disk space — SQLite handles gracefully
-
-### Device Testing
-- [ ] Test on a small screen phone (iPhone SE / similar)
-- [ ] Test on a large screen phone (iPhone 15 Pro Max / similar)
-- [ ] Test on a tablet (if `supportsTablet: true`)
-- [ ] Test on Android and iOS
-
----
-
-## 6. Debugging Tips
-
-### Expo DevTools
-- Shake the device (or press `m` in terminal) to open the dev menu
-- Enable "Fast Refresh" for instant feedback
-- Use "Debug Remote JS" to use Chrome DevTools
-
-### React Native Debugger
+- Clean install sequence:
 ```bash
-npx react-devtools
+rm -rf node_modules package-lock.json
+npm cache verify
+npm install
+npx expo start -c
 ```
-Inspect component tree, props, and state visually.
+- If Expo reports missing plugins/deps, it usually means `npm install` failed earlier; resolve install errors first.
+- If Metro reports syntax errors from core configs, validate there are no null bytes:
+```bash
+python3 - <<'PY'
+import pathlib
+for p in ['package.json','app.json','metro.config.js','tailwind.config.js','babel.config.js','global.css']:
+    b=pathlib.Path(p).read_bytes()
+    print(p, 'nul=', b.count(b'\\x00'))
+PY
+```
 
-### Database Inspection
-To inspect your SQLite database on-device:
-1. Use Expo's `expo-file-system` to export the `.db` file
-2. Open with [DB Browser for SQLite](https://sqlitebrowser.org/)
+## Automated Coverage
 
-### Common Issues
-| Issue | Fix |
-|-------|-----|
-| NativeWind styles not applying | Clear Metro cache: `npx expo start -c` |
-| SQLite not found | Ensure `expo-sqlite` plugin is in `app.json` |
-| Tests failing with module errors | Check `transformIgnorePatterns` in jest config |
-| Lottie animation not playing | Verify JSON file path and `lottie-react-native` version |
+### Analytics + Coaching Engine
+File: `__tests__/analytics.test.ts`
+- Weekly volume grouped and returned in chronological order.
+- Monthly volume grouped and returned in chronological order.
+- Exercise weekly max query behavior.
+- Epley 1RM query behavior.
+- PR detection:
+  - detects all PR types (`weight`, `volume`, `1rm`)
+  - deduplicates to highest value per type
+  - returns empty for sessions with no sets
+  - does not mark equal-to-history as PR
+- Celebration coaching logic:
+  - `legendary_start` when no previous session
+  - `outdone` when `current > previous * 1.05`
+  - `consistent` when `current >= previous * 0.9`
+  - `encouragement` when below 90%
+  - low-vibe discipline add-on text (`Elite discipline today.`)
+
+### Date Formatting Utilities
+File: `__tests__/date-format.test.ts`
+- `formatWeekLabel('2026-08') -> 'Feb 2026'`
+- `formatMonthLabel('2026-02') -> 'Feb 2026'`
+- invalid key fallback behavior
+
+### Home Session Persistence UX
+File: `__tests__/HomeScreen.test.tsx`
+- Renders home screen and nav actions.
+- Shows `Start Session` when no active session.
+- Shows `Resume Session` and elapsed timer when active session exists.
+- Routes correctly for start and resume actions.
+
+### Vibe Check Stability
+File: `__tests__/VibeCheck.test.tsx`
+- Renders all vibe options.
+- Starts session and navigates only after DB call resolves.
+- Shows failure alert when session creation fails.
+
+### Workout Logger UX (Current)
+File: `__tests__/WorkoutScreen.test.tsx`
+- Rehydrates workout header/timer and volume metrics.
+- Add-set validation alert on invalid input (`weight = 0`).
+- Delete flow shows confirmation alert.
+- Tapping set values enters edit mode.
+
+## Manual Test Checklist (Latest Features)
+
+### End Session Celebration Flow
+- End Session stops timer and persists final `elapsed_time`.
+- Coaching affirmation appears before SummaryCard.
+- `OUTDONE` path shows confetti for ~2 seconds.
+- Transition to SummaryCard occurs around 3 seconds.
+
+### Summary Card + Export
+- Date stamp format is `DD, MMMM, YYYY`.
+- Duration matches final timer (`HH:MM:SS`) and excludes paused time.
+- Card is fully captured in PNG export (including date).
+- Share sheet opens from `Download Summary`.
+
+### Session Persistence + Timer
+- Start session, navigate away, return: session resumes.
+- Home button changes to `Resume Session` for active session.
+- Sets rehydrate when returning to workout.
+- Timer resumes from persisted value and respects pause/play state.
+
+### History Delete Workout
+- Open Analytics -> History, tap a workout to open `HistoryDetailModal`.
+- Tap `Delete Workout` and verify destructive confirmation alert text appears.
+- Confirm delete and verify:
+  - modal closes
+  - workout no longer appears in selected date list
+  - calendar activity dot updates immediately if it was the only workout that day
+- Verify analytics integrity after deletion:
+  - deleted workout volume no longer contributes to weekly/monthly totals
+  - PR summaries reflect remaining sessions only (no stale records).
+
+### Edit/Delete + Keyboard UX
+- Weight/reps are editable from set rows.
+- Delete set requires confirmation alert.
+- Session/all-time volume updates immediately after edit/delete.
+- Numeric inputs dismiss keyboard on `Done`.
+- Tapping outside inputs dismisses keyboard.
+
+## Verification Status
+- Test files updated for latest Phase 2.2 + celebration flow.
+- In this environment, automated test execution was **not possible** because `npm` is unavailable (`command not found`).
+- Run the commands in **Quick Run** locally to confirm pass status.

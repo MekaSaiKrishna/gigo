@@ -1,133 +1,254 @@
-# README_CLAUDE.MD — Build Log
+# README_CLAUDE.MD — GiGoFit (Current State)
 
-## Phase 1 — Project Scaffold
+> Last updated: 2026-02-23 | Branch: main
 
-Scaffolded the entire GiGoFit Expo project from an empty repo into a runnable, testable React Native app.
-
-### Tech Stack
-
-| Layer | Tool | Why |
-|---|---|---|
-| Navigation | Expo Router v6 | File-based routing — each file in `app/` is a screen |
-| Styling | NativeWind v4 + Tailwind 3.4 | Utility-first CSS via `className` props in React Native |
-| Database | expo-sqlite | Local-only persistence for exercises, sessions, and sets |
-| Key-value store | AsyncStorage | Lightweight local storage for preferences |
-| Animations | lottie-react-native | For future muscle-highlighting animations |
-| Testing | Jest + React Native Testing Library | Component and unit tests |
-
-### Key Decisions
-
-1. **Expo Router over React Navigation** — file-based routing is simpler, each screen is just a file in `app/`.
-2. **NativeWind disabled in test env** — `babel-preset-expo@54` + NativeWind's Babel plugin triggers a `.plugins` validation error in `@babel/core`. Solved by conditionally loading NativeWind plugins only outside of `NODE_ENV=test`.
-3. **SQLite schema designed upfront** — three tables (`exercises`, `sessions`, `sets`) with foreign keys and a `vibe` constraint.
-4. **Dark-first theme** — all colors defined once in `tailwind.config.js` and mirrored in `src/constants/theme.ts`.
+## Overview
+GiGoFit is an Expo + React Native workout tracker with local SQLite persistence, session recovery, analytics, workout history, and a post-session shareable summary flow. All data is stored on-device — no backend, no accounts.
 
 ---
 
-## Phase 2 — Data Layer, Workout CRUD, Ghosting, Sectioned Picker, and Demo GIFs
+## Stack
+- Expo Router v3 (file-based navigation)
+- NativeWind v4 + Tailwind CSS
+- `expo-sqlite` v16 (WAL mode, New Architecture)
+- `react-native-reanimated` v3
+- Custom SVG charts (`react-native-svg`) — victory-native not used
+- `react-native-view-shot` + `expo-sharing`
+- `lottie-react-native`
+- Jest + React Native Testing Library
 
-Built the core data engine, full workout logging flow, grouped exercise picker, and exercise demo previews.
+---
 
-### Data Layer
+## Core Data Model
 
-**Exercise Seed Data** (`src/data/exercises.ts`)
-- 42 exercises across 10 muscle groups seeded into SQLite on first launch.
+```sql
+sessions (id, start_time INTEGER, end_time INTEGER, vibe INTEGER, elapsed_time INTEGER, is_paused INTEGER)
+sets     (id, session_id INTEGER FK→sessions, exercise_id INTEGER FK→exercises, weight REAL, reps INTEGER, created_at TEXT)
+exercises(id, name TEXT, muscle_group TEXT, category TEXT)
+```
 
-**Data Access Layer** (`src/lib/database.ts`)
-- `startSession(vibe)` / `endSession(id)` — create and close workout sessions.
-- `addSet()` / `deleteSet()` — log and remove individual sets.
-- `getGhostValues(exerciseId)` — fetch last weight/reps for any exercise.
-- `getSessionVolume()` / `getTotalVolume()` — real-time volume tracking.
+Required indexes created at DB init:
+- `idx_sessions_start_time`
+- `idx_sets_session_id`
+- `idx_sets_exercise_id`
 
-**Shared Types** (`src/types.ts`)
-- `VibeLevel`, `Exercise`, `Session`, `WorkoutSet`, `GhostValues`, `VIBE_MULTIPLIERS`.
+Vibe stored as integer: `low=0`, `normal=1`, `crushing=2`.
 
-### Workout Screen
+---
 
-Full workout UI in `app/workout.tsx` — exercise picker, weight/rep inputs, live set list with delete, running volume counter, vibe multiplier display, and "End Session" confirmation dialog.
+## Database Layer (`src/lib/database.ts`)
 
-**Ghosting** — Selecting an exercise auto-fills the weight and rep fields with the last values used. Zero friction.
+### Migration System
+- Uses `PRAGMA user_version` for versioned sequential migrations.
+- `CURRENT_DB_VERSION = 3`, `DB_MIGRATIONS` array maps version N→N+1.
+- `runMigrations()` reads current version, runs only pending migrations, increments version after each.
+- **NEVER modify existing migration entries — only append new ones.**
 
-### Exercise Picker — Grouped by Body Part
+Current migration chain:
+```
+0→1  migrateLegacySessionsIfNeeded   (legacy schema with started_at/ended_at columns)
+1→2  ensureSessionTimerColumns        (adds elapsed_time, is_paused)
+2→3  ensureSetsCascadeDelete          (adds ON DELETE CASCADE to sets.session_id FK)
+```
 
-The exercise picker uses a `SectionList` with sticky headers grouped by muscle group:
+### Key APIs
+- `startSession(vibe)` → `sessionId`
+- `endSession(sessionId)` — single-statement end (use `endSessionWithTimer` for full end flow)
+- `endSessionWithTimer(sessionId, elapsedTime)` — **atomic transaction**: saves elapsed time + sets end_time in one `withTransactionAsync` call
+- `getActiveSession()` → active session or null
+- `updateSessionTimer(sessionId, elapsedTime, isPaused)` — called periodically during workout
+- `addSet(sessionId, exerciseId, weight, reps)` → setId
+- `updateSet(setId, weight, reps)`
+- `deleteSet(setId)`
+- `getGhostValues(exerciseId)` → `{ weight, reps }` from most recent set for that exercise
+- `getSessionVolume(sessionId)` → total volume for session
+- `getTotalVolume()` → all-time volume
+- `getSessionsForMonth(year, month)` → completed sessions in that calendar month
+- `getSetDetailsForSession(sessionId)` → sets with exercise name joined
+- `hardDeleteSession(sessionId)` — cascades to delete all sets via FK
 
-| Section | Exercises |
+---
+
+## Analytics Layer (`src/lib/analytics.ts`)
+
+SQL-only aggregation from raw `sessions` + `sets`. No summary tables.
+
+| Function | Returns |
 |---|---|
-| **Chest** | Bench Press, Incline Dumbbell Press, Dumbbell Fly, Cable Crossover, Push-Up |
-| **Back** | Deadlift, Barbell Row, Pull-Up, Lat Pulldown, Seated Cable Row, Face Pull |
-| **Shoulders** | Overhead Press, Dumbbell Lateral Raise, Front Raise, Arnold Press, Reverse Fly |
-| **Biceps** | Barbell Curl, Dumbbell Curl, Hammer Curl, Preacher Curl |
-| **Triceps** | Tricep Dip, Skull Crusher, Tricep Pushdown, Overhead Tricep Extension |
-| **Legs** | Barbell Squat, Leg Press, Romanian Deadlift, Leg Extension, Leg Curl, Calf Raise, Bulgarian Split Squat |
-| **Glutes** | Hip Thrust, Glute Bridge, Cable Kickback |
-| **Core** | Plank, Hanging Leg Raise, Cable Crunch, Ab Wheel Rollout, Russian Twist |
-| **Forearms** | Wrist Curl, Farmer's Walk |
-| **Full Body** | Burpee |
+| `getWeeklyVolume(weeks = 8)` | `{ week, total_volume }[]` — chronological |
+| `getMonthlyVolume(months = 12)` | `{ month, total_volume }[]` — chronological |
+| `getExerciseWeeklyMax(exerciseId)` | `{ week, max_weight }[]` |
+| `getExerciseWeeklyEstimated1RM(exerciseId)` | `{ week, max_estimated_1rm }[]` — Epley formula: `weight * (1 + reps/30.0)` |
+| `detectNewPR(sessionId)` | `{ exerciseId, type, value }[]` — types: `weight`, `volume`, `1rm` |
+| `getMonthlyPRSummary(referenceTimeMs?)` | `{ exerciseId, type, value, sessionId }[]` |
+| `getPersonalRecords()` | `{ exercise_id, exercise_name, muscle_group, max_weight }[]` |
+| `getCoachingComparisonToPreviousSession(volume, vibe)` | coaching outcome object |
 
-Key files:
-- `src/data/exercise-meta.ts` — `MUSCLE_GROUP_LABELS`, `MUSCLE_GROUP_ORDER`, and `EXERCISE_DEMO_GIFS` mapping.
-- Section headers render as sticky uppercase labels in the primary color.
-- Exercises within each section show name + category (compound/isolation/bodyweight).
-
-### Exercise Demo GIFs
-
-When you select an exercise from the picker, a **placeholder demo GIF** appears below the weight/rep inputs showing proper form.
-
-**How it works:**
-- `src/data/exercise-meta.ts` maps every exercise name to a placeholder GIF URL.
-- `src/components/ExerciseDemo.tsx` renders the GIF with a loading spinner and error fallback.
-- If the GIF fails to load or no URL exists, a graceful fallback shows "Demo coming soon for [exercise]".
-- The demo only appears when an exercise is selected — otherwise the space is given to the set list.
-
-**To replace with real assets later:**
-1. Drop your own GIFs into `assets/demos/` or host them on a CDN.
-2. Update the URLs in `EXERCISE_DEMO_GIFS` in `src/data/exercise-meta.ts`.
-3. For offline support, switch `Image` source from `{ uri }` to `require()` with local files.
+Coaching categories:
+- `legendary_start` — no prior completed session
+- `outdone` — current > previous × 1.05
+- `consistent` — current ≥ previous × 0.9
+- `encouragement` — otherwise
+- Low-energy consistency bonus: appends `"Elite discipline today."` to consistent outcome
 
 ---
 
-## Current File Structure
+## Utility Layer (`src/utils/date-format.ts`)
 
+All formatting lives here — do not duplicate in screen files:
+
+| Export | Description |
+|---|---|
+| `formatDuration(seconds)` | `"01:23:45"` |
+| `formatVibeLabel(vibe)` | `"Low Energy"` / `"Normal"` / `"Crushing It"` |
+| `formatSessionDate(ms)` | `"23, February, 2026"` |
+| `formatSessionDateTime(ms)` | `"23 February, 2026 • 09:41 AM"` |
+| `formatSessionTime(ms)` | `"09:41 AM"` |
+| `formatWeekLabel(weekKey)` | `"2026-08"` → `"Feb 2026"` |
+| `formatMonthLabel(monthKey)` | `"2026-02"` → `"Feb 2026"` |
+
+---
+
+## App Flows
+
+### Home (`app/index.tsx`)
+- `useFocusEffect` calls `getActiveSession()` wrapped in `try/finally` — loading state always resolves.
+- Shows `Resume Session` (with elapsed time) or `Start Session`.
+- Buttons to navigate to Exercise Library, Analytics, and The Ascent.
+
+### Vibe Check (`app/vibe-check.tsx`)
+- Three vibe cards. Session creation in DB before navigating to workout.
+- Navigation to `/workout?sessionId=X&vibe=Y` only after `startSession()` succeeds.
+
+### Workout (`app/workout.tsx`)
+- URL params: `sessionId` (validated as finite number), `vibe` (validated against `VALID_VIBES = ["low", "normal", "crushing"]`, defaults to `"normal"`).
+- Input limits: weight 0–1000, reps 1–999.
+- Exercise picker is a `SectionList` grouped by muscle group.
+- Ghosting: `getGhostValues(exerciseId)` auto-fills weight/reps on exercise select.
+- Timer: `Interval` ticks every second. Throttled persist every 5 s via `updateSessionTimer`. Immediate persist on pause/unmount. **Session end uses `endSessionWithTimer` (atomic transaction).**
+- Timer persist catch logs with `console.warn` (no silent swallowing).
+- Export: 1080×1080 PNG captured via `captureRef`, shared via `expo-sharing`. Export errors are logged with `console.warn`.
+
+### Analytics (`app/analytics.tsx`)
+- Four sections: Weekly Volume, Monthly Volume, Exercise Trend, PR Summary.
+- History calendar below charts using `react-native-calendars`.
+- Chart data (`weeklyData`, `monthlyData`, `maxData`, `current1RM`) wrapped in `useMemo`.
+- Analytics queries wrapped in `try/catch`; chart areas render empty on error.
+- Vibe labels and duration formatting imported from `src/utils/date-format.ts`.
+
+---
+
+## Root Layout (`app/_layout.tsx`)
+- `RootErrorBoundary` class component wraps entire navigator.
+- On unhandled render error: shows branded recovery screen with "Try again" button.
+- Logs error + component stack to console.
+
+---
+
+## Components
+
+### `ExerciseDemo.tsx`
+- Props: `exerciseName: string`
+- Looks up URL in `EXERCISE_DEMO_GIFS` map.
+- Shows `ActivityIndicator` while loading, emoji fallback on error or unknown exercise.
+
+### `SummaryCard.tsx`
+- Rendered into `ViewShot` ref for PNG export.
+- Shows: date, duration, vibe, total volume, per-exercise set summary.
+
+### `HistoryDetailModal.tsx`
+- Modal for past session detail.
+- Imports `formatDuration`, `formatVibeLabel`, `formatSessionDateTime` from `src/utils/date-format.ts`.
+
+---
+
+## Constants & Types (`src/types.ts`, `src/constants/theme.ts`)
+
+```ts
+type VibeLevel = "low" | "normal" | "crushing";
+// VIBE_MULTIPLIERS exported from src/types.ts (runtime constant — move to src/constants/ in Phase 3)
 ```
-app/
-  _layout.tsx               Root layout — dark theme, Stack navigator
-  index.tsx                 Home screen — Start Session, Exercises, Ascent
-  vibe-check.tsx            Energy selector -> creates DB session -> navigates
-  workout.tsx               Workout screen with sectioned picker + demo GIFs
-  exercises.tsx             Exercise library placeholder
-  ascent.tsx                Altitude tracker placeholder
 
-src/
-  types.ts                  Shared types + vibe multipliers
-  data/exercises.ts         42-exercise seed data
-  data/exercise-meta.ts     Muscle group labels, ordering, demo GIF URLs
-  components/ExerciseDemo.tsx   GIF demo viewer with loading/error states
-  lib/database.ts           SQLite init, seeding, and all CRUD functions
-  constants/theme.ts        Color palette + peak height constant
+Theme colors live in `src/constants/theme.ts`. Charts must use these — no inline hex values.
 
-__tests__/
-  HomeScreen.test.tsx       4 tests
-  VibeCheck.test.tsx        3 tests
-  WorkoutScreen.test.tsx    7 tests — picker sections, demo rendering, vibe
-  ExerciseDemo.test.tsx     2 tests — known exercise, fallback for unknown
-  exercises.test.ts         4 tests — seed count, fields, groups, no duplicates
-  exercise-meta.test.ts     4 tests — labels, ordering, GIF coverage, URL validity
-  types.test.ts             3 tests — vibe multiplier checks
-```
+---
 
-## How to Run
+## Testing
 
 ```bash
-npm start              # Dev server — scan QR with Expo Go
-npm test               # Run all 27 tests
-npm run test:watch     # Re-run on save
-npm run test:coverage  # Coverage report
+~/.nvm/versions/node/v20.20.0/bin/node node_modules/.bin/jest --no-coverage
 ```
 
-## Test Results
+Current test files:
+- `__tests__/analytics.test.ts` — 17 tests covering weekly/monthly grouping, PR detection, 1RM formula, coaching engine, `getMonthlyPRSummary`
+- `__tests__/HomeScreen.test.tsx`
+- `__tests__/WorkoutScreen.test.tsx`
+- `__tests__/VibeCheck.test.tsx`
+- `__tests__/ExerciseDemo.test.tsx`
 
+---
+
+## App Configuration (`app.json`)
+
+Key fields set:
+- `ios.bundleIdentifier: "com.gigofit.app"`
+- `ios.buildNumber: "1"`
+- `ios.deploymentTarget: "16.0"`
+- `ios.supportsTablet: false`
+- `ios.infoPlist`: photo library usage descriptions
+- `ios.privacyManifests`: FileTimestamp + UserDefaults reasons
+- `android.package: "com.gigofit.app"`
+- `android.versionCode: 1`
+- `android.minSdkVersion: 21`
+- `android.permissions`: WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE
+
+EAS build configured in `eas.json` with `development`, `preview`, `production` profiles.
+
+---
+
+## What Is NOT Implemented (Stub Screens)
+
+| Screen | File | Status |
+|---|---|---|
+| Exercise Library | `app/exercises.tsx` | Placeholder text |
+| The Ascent | `app/ascent.tsx` | Hard-coded 0m display |
+| Share the Peak | — | Not implemented |
+| Anatomical heatmaps | — | GIF URLs only (Tenor CDN) |
+| Vibe multiplier applied | `app/workout.tsx` | Multiplier read but not applied |
+
+---
+
+## Run
+
+```bash
+npm install
+npm start
+npm test
+npm run test:watch
+npm run test:coverage
 ```
-Test Suites: 7 passed, 7 total
-Tests:       27 passed, 27 total
-```
+
+_________
+## Phase 2.6 — The Ascent Visualization
+
+### Visual Gamification
+- **The Mountain:** Implemented a smooth, mathematical hill using a quadratic Bezier curve (`react-native-svg`).
+- **The "Soul" Orb:** A glowing, animated circle representing the current workout's "Vibe" height.
+- **The Ghost Orb:** A semi-transparent "Ghost" orb representing the peak height of the previous session, providing a direct visual benchmark.
+- **Dynamic Mapping:** Orb height is calculated as a percentage of the mountain slope based on the `vibe` multiplier (1-5).
+
+### Key Files
+- `app/ascent.tsx` — Visualization logic and Reanimated sequences.
+
+## Phase 2.7 — The Ascent (Vector Implementation)
+
+### Visual Architecture
+- **Zero-Asset Visualization:** Switched to code-defined SVG geometry using `react-native-svg` for maximum performance and zero storage footprint.
+- **Mathematical Hill:** A smooth quadratic Bezier curve path represents the workout "climb."
+- **Dual-Orb Logic:** - **Active Soul:** A glowing Emerald orb representing the current session's Vibe.
+    - **Previous Ghost:** A faint Slate orb fixed at the last session's Vibe peak for direct comparison.
+- **Bezier Mapping:** Implemented a parametric equation to ensure orbs sit precisely on the curve's edge regardless of the climb height.
+
+### Key Logic
+- `vibeToProgress(vibe)`: Maps 1–5 scale to 0.1–1.0 progress on the Bezier path.
+- `getPreviousSessionVibe()`: New SQL helper to retrieve the ghost orb's coordinates.

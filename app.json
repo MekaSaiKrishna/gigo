@@ -14,8 +14,26 @@
       "backgroundColor": "#1a1a2e"
     },
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.gigofit.app"
+      "supportsTablet": false,
+      "bundleIdentifier": "com.gigofit.app",
+      "buildNumber": "1",
+      "deploymentTarget": "16.0",
+      "infoPlist": {
+        "NSPhotoLibraryAddUsageDescription": "GiGoFit saves your workout summary images to your photo library.",
+        "NSPhotoLibraryUsageDescription": "GiGoFit needs access to your photo library to save workout summary images."
+      },
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryFileTimestamp",
+            "NSPrivacyAccessedAPITypeReasons": ["C617.1"]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+          }
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -23,7 +41,13 @@
         "backgroundColor": "#1a1a2e"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.gigofit.app"
+      "package": "com.gigofit.app",
+      "versionCode": 1,
+      "minSdkVersion": 21,
+      "permissions": [
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",

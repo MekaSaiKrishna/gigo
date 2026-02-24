@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, Pressable, ActivityIndicator } from "react-native";
+import { View, Text, Pressable, ActivityIndicator, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { startSession } from "../src/lib/database";
 import type { VibeLevel } from "../src/types";
@@ -21,6 +21,8 @@ export default function VibeCheckScreen() {
       const sessionId = await startSession(level);
       router.push(`/workout?sessionId=${sessionId}&vibe=${level}`);
     } catch {
+      Alert.alert("Error", "Unable to start a session right now. Please try again.");
+    } finally {
       setLoading(false);
     }
   };

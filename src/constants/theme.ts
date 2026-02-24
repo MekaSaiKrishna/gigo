@@ -5,6 +5,10 @@ export const COLORS = {
   accent: "#0f3460",
   text: "#eaeaea",
   textMuted: "#8a8a9a",
+  chartGrid: "#2a355c",
+  chartLine: "#e94560",
+  chartBar: "#0f3460",
+  chartAxis: "#8a8a9a",
 } as const;
 
 export const PEAK_HEIGHT_METERS = 8000;

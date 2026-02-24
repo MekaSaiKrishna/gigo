@@ -1,34 +1,91 @@
 import React from "react";
-import { render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import HomeScreen from "../app/index";
 
-// Mock expo-router
+const mockPush = jest.fn();
+const mockGetActiveSession = jest.fn();
+
 jest.mock("expo-router", () => ({
   Link: ({ children }: { children: React.ReactNode }) => children,
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: () => ({ push: mockPush }),
+  useFocusEffect: (effect: () => void | (() => void)) => {
+    effect();
+  },
+}));
+
+jest.mock("../src/lib/database", () => ({
+  getActiveSession: () => mockGetActiveSession(),
 }));
 
 describe("HomeScreen", () => {
-  it("renders the app title", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("renders app title and base navigation links", async () => {
+    mockGetActiveSession.mockResolvedValue(null);
     render(<HomeScreen />);
+
     expect(screen.getByText("GiGoFit")).toBeTruthy();
-  });
-
-  it("renders the tagline", () => {
-    render(<HomeScreen />);
-    expect(
-      screen.getByText("Minimalist Fitness. Maximum Ascent.")
-    ).toBeTruthy();
-  });
-
-  it("renders the Start Session button", () => {
-    render(<HomeScreen />);
-    expect(screen.getByText("Start Session")).toBeTruthy();
-  });
-
-  it("renders navigation links", () => {
-    render(<HomeScreen />);
     expect(screen.getByText("Exercise Library")).toBeTruthy();
+    expect(screen.getByText("Analytics")).toBeTruthy();
     expect(screen.getByText("The Ascent")).toBeTruthy();
+  });
+
+  it("shows Start Session when there is no active session", async () => {
+    mockGetActiveSession.mockResolvedValue(null);
+    render(<HomeScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Start Session")).toBeTruthy();
+    });
+  });
+
+  it("shows Resume Session and elapsed timer when an active session exists", async () => {
+    mockGetActiveSession.mockResolvedValue({
+      id: 11,
+      start_time: 1700000000000,
+      end_time: null,
+      vibe: "normal",
+      elapsed_time: 125,
+      is_paused: false,
+    });
+    render(<HomeScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Resume Session")).toBeTruthy();
+      expect(screen.getByText("Elapsed: 00:02:05")).toBeTruthy();
+    });
+  });
+
+  it("navigates to vibe check when starting a new session", async () => {
+    mockGetActiveSession.mockResolvedValue(null);
+    render(<HomeScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Start Session")).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText("Start Session"));
+    expect(mockPush).toHaveBeenCalledWith("/vibe-check");
+  });
+
+  it("navigates to workout when resuming an active session", async () => {
+    mockGetActiveSession.mockResolvedValue({
+      id: 42,
+      start_time: 1700000000000,
+      end_time: null,
+      vibe: "low",
+      elapsed_time: 22,
+      is_paused: true,
+    });
+    render(<HomeScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Resume Session")).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText("Resume Session"));
+    expect(mockPush).toHaveBeenCalledWith("/workout?sessionId=42&vibe=low");
   });
 });
