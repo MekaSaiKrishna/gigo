@@ -32,21 +32,19 @@
 
 2. **No error handling on the `endSession` -> navigate flow** — In `workout.tsx`, `handleEndSession` calls `endSession(sessionId)` then immediately `router.replace()`. If the DB call fails, the user gets navigated to a broken summary screen with no data. No try/catch, no fallback.
 
-3. **Exercise Library and Ascent are just placeholder screens** — Two of the three home screen buttons lead to "Coming in Phase 3/4" text. For a user who downloads this, that's a dead end. These buttons probably shouldn't be visible yet, or should have a "coming soon" badge.
+3. **No workout history** — After a session ends and you go home, that session is gone from the UI forever. The data is in SQLite but there's no screen to view past workouts. Users have zero reason to come back tomorrow if they can't see yesterday.
 
-4. **No workout history** — After a session ends and you go home, that session is gone from the UI forever. The data is in SQLite but there's no screen to view past workouts. Users have zero reason to come back tomorrow if they can't see yesterday.
+4. **No rest timer** — Most lifters rest 60-180 seconds between sets. There's no timer, no countdown, no vibration. This is a core feature gap for a workout app.
 
-5. **No rest timer** — Most lifters rest 60-180 seconds between sets. There's no timer, no countdown, no vibration. This is a core feature gap for a workout app.
+5. **Vibe multipliers are displayed but not enforced** — The workout screen shows "x0.75 sets, x0.8 reps" for Low Energy, but nothing actually limits or suggests the number of sets/reps based on this. It's decorative, not functional.
 
-6. **Vibe multipliers are displayed but not enforced** — The workout screen shows "x0.75 sets, x0.8 reps" for Low Energy, but nothing actually limits or suggests the number of sets/reps based on this. It's decorative, not functional.
+6. **Demo GIFs are external URLs (Tenor)** — Every exercise demo loads from `media.tenor.com`. If Tenor changes URLs, blocks hotlinking, or goes down, all 42 demos break simultaneously. No local fallback assets.
 
-7. **Demo GIFs are external URLs (Tenor)** — Every exercise demo loads from `media.tenor.com`. If Tenor changes URLs, blocks hotlinking, or goes down, all 42 demos break simultaneously. No local fallback assets.
+7. **No input validation UX on weight/reps** — Weight accepts decimal pad but you can enter "0" weight with positive reps and it logs a set. No minimum weight validation for weighted exercises. Also no max sanity check — you could log 9999 kg x 9999 reps and wreck your volume stats.
 
-8. **No input validation UX on weight/reps** — Weight accepts decimal pad but you can enter "0" weight with positive reps and it logs a set. No minimum weight validation for weighted exercises. Also no max sanity check — you could log 9999 kg x 9999 reps and wreck your volume stats.
+8. **`useShareSummary.ts` hook referenced in CLAUDE.md but doesn't exist** — The CLAUDE.md spec mentions `src/hooks/useShareSummary.ts` as a key file, but the share logic was baked directly into `SummaryCard.tsx`. The spec and implementation are out of sync.
 
-9. **`useShareSummary.ts` hook referenced in CLAUDE.md but doesn't exist** — The CLAUDE.md spec mentions `src/hooks/useShareSummary.ts` as a key file, but the share logic was baked directly into `SummaryCard.tsx`. The spec and implementation are out of sync.
-
-10. **No haptic feedback anywhere** — For a mobile-native app built with React Native, there's zero haptic feedback on button presses, set logging, or session completion. Feels flat.
+9. **No haptic feedback anywhere** — For a mobile-native app built with React Native, there's zero haptic feedback on button presses, set logging, or session completion. Feels flat.
 
 ---
 
