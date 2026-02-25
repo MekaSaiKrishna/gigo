@@ -114,6 +114,7 @@ Use this checklist as you build each feature.
 - [ ] App title "GiGoFit" is visible
 - [ ] Tagline is visible
 - [ ] "Start Session" button navigates to Vibe Check
+- [ ] "Workout History" button navigates to history
 - [ ] "Exercise Library" button navigates to exercises
 - [ ] "The Ascent" button navigates to ascent view
 - [ ] Dark theme renders correctly (dark background, light text)
@@ -130,7 +131,23 @@ Use this checklist as you build each feature.
 - [ ] Ghost values (last weight/reps) pre-fill inputs
 - [ ] Adding a set updates the session total
 - [ ] Session can be ended / saved
+- [ ] End Session shows error alert if DB write fails (does not navigate)
 - [ ] Vibe-based adjustments reflect in suggested reps
+
+### Summary Card
+- [ ] Displays volume, duration, sets, vibe, and exercise breakdown after a session
+- [ ] Empty-session guard: shows "No Sets Logged" with motivational text when `totalSets === 0`
+- [ ] "Download Image" button captures card as PNG and opens share sheet
+- [ ] Card does not show "Download Image" or stats when session has zero sets
+
+### Workout History
+- [ ] "Workout History" button on home screen navigates to `/history`
+- [ ] Empty state shows "No Workouts Yet" with motivational text
+- [ ] Completed sessions appear in reverse chronological order
+- [ ] Each row shows date, vibe emoji, total volume, total sets, and duration
+- [ ] Tapping a session navigates to its full summary card
+- [ ] Volume formatted correctly (kg under 1000, tons above)
+- [ ] Duration formatted correctly (minutes under 60, hours above)
 
 ### Exercise Library (Phase 3)
 - [ ] All 42 exercises are listed

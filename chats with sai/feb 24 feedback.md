@@ -28,49 +28,37 @@
 
 ## What's Bad
 
-1. **Summary card may not display if session has no sets** — If a user ends a session with zero sets logged, `getSessionSummary()` returns data with `totalVolume: 0`, `totalSets: 0`, and an empty `exercises` array. The card renders but looks hollow — a big "0kg" with nothing underneath. There's no guard or empty-state messaging for this case.
+1. **Exercise Library and Ascent are just placeholder screens** — Two of the three home screen buttons lead to "Coming in Phase 3/4" text. For a user who downloads this, that's a dead end. These buttons probably shouldn't be visible yet, or should have a "coming soon" badge.
 
-2. **No error handling on the `endSession` -> navigate flow** — In `workout.tsx`, `handleEndSession` calls `endSession(sessionId)` then immediately `router.replace()`. If the DB call fails, the user gets navigated to a broken summary screen with no data. No try/catch, no fallback.
+2. **No rest timer** — Most lifters rest 60-180 seconds between sets. There's no timer, no countdown, no vibration. This is a core feature gap for a workout app.
 
-3. **Exercise Library and Ascent are just placeholder screens** — Two of the three home screen buttons lead to "Coming in Phase 3/4" text. For a user who downloads this, that's a dead end. These buttons probably shouldn't be visible yet, or should have a "coming soon" badge.
+3. **Vibe multipliers are displayed but not enforced** — The workout screen shows "x0.75 sets, x0.8 reps" for Low Energy, but nothing actually limits or suggests the number of sets/reps based on this. It's decorative, not functional.
 
-4. **No workout history** — After a session ends and you go home, that session is gone from the UI forever. The data is in SQLite but there's no screen to view past workouts. Users have zero reason to come back tomorrow if they can't see yesterday.
+4. **Demo GIFs are external URLs (Tenor)** — Every exercise demo loads from `media.tenor.com`. If Tenor changes URLs, blocks hotlinking, or goes down, all 42 demos break simultaneously. No local fallback assets.
 
-5. **No rest timer** — Most lifters rest 60-180 seconds between sets. There's no timer, no countdown, no vibration. This is a core feature gap for a workout app.
+5. **No input validation UX on weight/reps** — Weight accepts decimal pad but you can enter "0" weight with positive reps and it logs a set. No minimum weight validation for weighted exercises. Also no max sanity check — you could log 9999 kg x 9999 reps and wreck your volume stats.
 
-6. **Vibe multipliers are displayed but not enforced** — The workout screen shows "x0.75 sets, x0.8 reps" for Low Energy, but nothing actually limits or suggests the number of sets/reps based on this. It's decorative, not functional.
+6. **`useShareSummary.ts` hook referenced in CLAUDE.md but doesn't exist** — The CLAUDE.md spec mentions `src/hooks/useShareSummary.ts` as a key file, but the share logic was baked directly into `SummaryCard.tsx`. The spec and implementation are out of sync.
 
-7. **Demo GIFs are external URLs (Tenor)** — Every exercise demo loads from `media.tenor.com`. If Tenor changes URLs, blocks hotlinking, or goes down, all 42 demos break simultaneously. No local fallback assets.
-
-8. **No input validation UX on weight/reps** — Weight accepts decimal pad but you can enter "0" weight with positive reps and it logs a set. No minimum weight validation for weighted exercises. Also no max sanity check — you could log 9999 kg x 9999 reps and wreck your volume stats.
-
-9. **`useShareSummary.ts` hook referenced in CLAUDE.md but doesn't exist** — The CLAUDE.md spec mentions `src/hooks/useShareSummary.ts` as a key file, but the share logic was baked directly into `SummaryCard.tsx`. The spec and implementation are out of sync.
-
-10. **No haptic feedback anywhere** — For a mobile-native app built with React Native, there's zero haptic feedback on button presses, set logging, or session completion. Feels flat.
+7. **No haptic feedback anywhere** — For a mobile-native app built with React Native, there's zero haptic feedback on button presses, set logging, or session completion. Feels flat.
 
 ---
 
 ## What Can Be Improved
 
-1. **Add an empty-session guard to the summary card** — If `totalSets === 0`, show a different state: "No sets logged this session" with a motivational nudge instead of rendering a card with all zeros.
+1. **Make vibe multipliers functional** — After X sets at "Low Energy" mode, show a gentle prompt: "You've hit your target for today. Keep going?" At "Crushing It", suggest extra volume.
 
-2. **Wrap `endSession` in try/catch** — Add error handling in `handleEndSession` so a failed DB write doesn't dump the user into a broken screen.
+2. **Add a rest timer** — Even a simple countdown that auto-starts after logging a set. 60s / 90s / 120s presets. Vibrate on completion.
 
-3. **Build workout history** — A simple `FlatList` of past sessions showing date, vibe, total volume, and duration. Tap to see the full summary card. This is the single highest-impact feature for retention.
+3. **Bundle demo assets locally** — Either ship static images/Lottie files for the 42 exercises, or at minimum cache the GIFs on first load with a local fallback.
 
-4. **Make vibe multipliers functional** — After X sets at "Low Energy" mode, show a gentle prompt: "You've hit your target for today. Keep going?" At "Crushing It", suggest extra volume.
+4. **Add haptics** — `expo-haptics` is a one-line install. Light impact on button press, medium on set logged, success notification on session complete.
 
-5. **Add a rest timer** — Even a simple countdown that auto-starts after logging a set. 60s / 90s / 120s presets. Vibrate on completion.
+5. **Implement the Exercise Library screen** — It's already listed on the home screen. Use the same `SectionList` pattern from the workout picker, but with the demo GIF expanded and exercise details.
 
-6. **Bundle demo assets locally** — Either ship static images/Lottie files for the 42 exercises, or at minimum cache the GIFs on first load with a local fallback.
+6. **Add a "personal best" indicator** — When the user lifts more weight than their previous best for an exercise, flash a subtle "PR" badge. Almost free to implement with existing data.
 
-7. **Add haptics** — `expo-haptics` is a one-line install. Light impact on button press, medium on set logged, success notification on session complete.
-
-8. **Implement the Exercise Library screen** — It's already listed on the home screen. Use the same `SectionList` pattern from the workout picker, but with the demo GIF expanded and exercise details.
-
-9. **Add a "personal best" indicator** — When the user lifts more weight than their previous best for an exercise, flash a subtle "PR" badge. Almost free to implement with existing data.
-
-10. **Dark mode is the only mode** — That's fine for now, but a light theme toggle would widen the audience. The Tailwind setup already supports this with minimal effort.
+7. **Dark mode is the only mode** — That's fine for now, but a light theme toggle would widen the audience. The Tailwind setup already supports this with minimal effort.
 
 ---
 

@@ -112,34 +112,74 @@ When a workout ends, instead of returning to the home screen, the user is taken 
 
 ---
 
+## Phase 2.5 — Bug Fixes and Workout History
+
+Addressed three critical issues from the app review and built the first retention-driving feature.
+
+### Fix: Empty-Session Guard on SummaryCard
+
+**Problem:** Ending a session with zero sets logged rendered a hollow summary card showing "0kg" volume with no exercise breakdown — a confusing dead-end.
+
+**Solution:** Added an early return in `SummaryCard.tsx` that checks `summary.totalSets === 0`. When true, renders a motivational empty state ("No Sets Logged — You showed up, that's the hardest part") instead of the data card. The "Download Image" button is intentionally hidden in this state.
+
+### Fix: Error Handling on End Session Flow
+
+**Problem:** `handleEndSession` in `workout.tsx` called `endSession(sessionId)` then immediately navigated to the summary screen. If the DB write failed, the user was dumped into a broken screen with no data.
+
+**Solution:** Wrapped the `endSession()` + `router.replace()` sequence in a try/catch block. On failure, an `Alert.alert()` informs the user ("Could not end the session. Please try again.") and navigation is skipped.
+
+### Feature: Workout History Screen
+
+**Problem:** After completing a session and going home, past workouts were invisible. The data existed in SQLite but there was no way to view it.
+
+**Solution:**
+- **New screen:** `app/history.tsx` — a `FlatList` of all completed sessions in reverse chronological order.
+- **Each row shows:** formatted date, vibe emoji, total volume (formatted as kg/tons), total sets, and duration (formatted as minutes/hours).
+- **Tap to view:** Pressing a session row navigates to `/workout-complete?sessionId=N` to view the full summary card.
+- **Empty state:** Shows "No Workouts Yet — Complete your first session to see it here."
+- **Data layer:** Added `getSessionHistory()` to `database.ts` — a single SQL query that joins `sessions` and `sets`, aggregating volume, set count, and duration, filtered to completed sessions only.
+- **Type:** Added `SessionHistoryItem` to `src/types.ts`.
+- **Home screen:** Added "Workout History" button to `app/index.tsx` between "Start Session" and "Exercise Library".
+- **Refresh on focus:** Uses `useFocusEffect` to reload data every time the screen is focused (so new sessions appear immediately after navigating back).
+
+**Key files:**
+- `app/history.tsx` — the history screen.
+- `app/index.tsx` — updated home screen with History button.
+- `src/lib/database.ts` — `getSessionHistory()` query.
+- `src/types.ts` — `SessionHistoryItem` type.
+
+---
+
 ## Current File Structure
 
 ```
 app/
   _layout.tsx               Root layout — dark theme, Stack navigator
-  index.tsx                 Home screen — Start Session, Exercises, Ascent
+  index.tsx                 Home screen — Start Session, History, Exercises, Ascent
   vibe-check.tsx            Energy selector -> creates DB session -> navigates
   workout.tsx               Workout screen with sectioned picker + demo GIFs
   workout-complete.tsx      Summary card screen with Reanimated entrance
+  history.tsx               Workout history list (reverse chronological)
   exercises.tsx             Exercise library placeholder
   ascent.tsx                Altitude tracker placeholder
 
 src/
-  types.ts                  Shared types, vibe multipliers, SessionSummary
+  types.ts                  Shared types, vibe multipliers, SessionSummary, SessionHistoryItem
   data/exercises.ts         42-exercise seed data
   data/exercise-meta.ts     Muscle group labels, ordering, demo GIF URLs
   components/ExerciseDemo.tsx   GIF demo viewer with loading/error states
-  components/SummaryCard.tsx    Shareable 1:1 workout summary card
-  lib/database.ts           SQLite init, seeding, CRUD, and session summary
+  components/SummaryCard.tsx    Shareable 1:1 workout summary card (with empty-session guard)
+  lib/database.ts           SQLite init, seeding, CRUD, session summary, and session history
   constants/theme.ts        Color palette + peak height constant
 
 __tests__/
-  HomeScreen.test.tsx       4 tests
+  HomeScreen.test.tsx       4 tests — title, tagline, start session, nav links (incl. History)
   VibeCheck.test.tsx        3 tests
-  WorkoutScreen.test.tsx    7 tests — picker sections, demo rendering, vibe
+  WorkoutScreen.test.tsx    8 tests — picker sections, demo rendering, vibe, endSession error
   WorkoutComplete.test.tsx  4 tests — loading, summary card, back button, error
-  SummaryCard.test.tsx      11 tests — volume, duration, vibe, exercises, branding
+  SummaryCard.test.tsx      12 tests — volume, duration, vibe, exercises, branding, empty guard
   ExerciseDemo.test.tsx     2 tests — known exercise, fallback for unknown
+  History.test.tsx          6 tests — loading, empty state, session list, navigation, formatting
   exercises.test.ts         4 tests — seed count, fields, groups, no duplicates
   exercise-meta.test.ts     4 tests — labels, ordering, GIF coverage, URL validity
   types.test.ts             3 tests — vibe multiplier checks
@@ -149,7 +189,7 @@ __tests__/
 
 ```bash
 npm start              # Dev server — scan QR with Expo Go
-npm test               # Run all 42 tests
+npm test               # Run all 50 tests
 npm run test:watch     # Re-run on save
 npm run test:coverage  # Coverage report
 ```
@@ -157,6 +197,6 @@ npm run test:coverage  # Coverage report
 ## Test Results
 
 ```
-Test Suites: 9 passed, 9 total
-Tests:       42 passed, 42 total
+Test Suites: 10 passed, 10 total
+Tests:       50 passed, 50 total
 ```

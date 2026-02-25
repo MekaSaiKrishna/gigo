@@ -28,6 +28,7 @@ describe("HomeScreen", () => {
 
   it("renders navigation links", () => {
     render(<HomeScreen />);
+    expect(screen.getByText("Workout History")).toBeTruthy();
     expect(screen.getByText("Exercise Library")).toBeTruthy();
     expect(screen.getByText("The Ascent")).toBeTruthy();
   });

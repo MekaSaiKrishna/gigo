@@ -1,6 +1,6 @@
 import * as SQLite from "expo-sqlite";
 import { EXERCISE_SEED } from "../data/exercises";
-import type { Exercise, Session, WorkoutSet, VibeLevel, GhostValues, ExerciseSummary, SessionSummary } from "../types";
+import type { Exercise, Session, WorkoutSet, VibeLevel, GhostValues, ExerciseSummary, SessionSummary, SessionHistoryItem } from "../types";
 
 const DB_NAME = "gigofit.db";
 
@@ -217,4 +217,29 @@ export async function getSessionSummary(sessionId: number): Promise<SessionSumma
     durationMinutes,
     exercises,
   };
+}
+
+// ── Session History ─────────────────────────────────────
+
+export async function getSessionHistory(): Promise<SessionHistoryItem[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<SessionHistoryItem>(
+    `SELECT
+       s.id,
+       s.started_at,
+       s.ended_at,
+       s.vibe,
+       COALESCE(SUM(st.weight * st.reps), 0) as total_volume,
+       COUNT(st.id) as total_sets,
+       CASE
+         WHEN s.ended_at IS NOT NULL
+         THEN MAX(1, ROUND((julianday(s.ended_at) - julianday(s.started_at)) * 1440))
+         ELSE 0
+       END as duration_minutes
+     FROM sessions s
+     LEFT JOIN sets st ON st.session_id = s.id
+     WHERE s.ended_at IS NOT NULL
+     GROUP BY s.id
+     ORDER BY s.started_at DESC`
+  );
 }

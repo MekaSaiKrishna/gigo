@@ -122,8 +122,15 @@ export default function WorkoutScreen() {
         text: "End",
         style: "destructive",
         onPress: async () => {
-          await endSession(sessionId);
-          router.replace(`/workout-complete?sessionId=${sessionId}`);
+          try {
+            await endSession(sessionId);
+            router.replace(`/workout-complete?sessionId=${sessionId}`);
+          } catch {
+            Alert.alert(
+              "Error",
+              "Could not end the session. Please try again."
+            );
+          }
         },
       },
     ]);

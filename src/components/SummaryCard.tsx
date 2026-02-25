@@ -35,6 +35,27 @@ export default function SummaryCard({ summary }: SummaryCardProps) {
   const cardSize = Math.min(screenWidth - 48, 380);
   const vibeInfo = VIBE_CONFIG[summary.session.vibe];
 
+  // Empty-session guard: show a motivational empty state instead of zeros
+  if (summary.totalSets === 0) {
+    return (
+      <View className="items-center">
+        <View
+          style={{ width: cardSize, height: cardSize }}
+          className="overflow-hidden rounded-3xl bg-surface items-center justify-center px-8"
+        >
+          <Text className="text-5xl mb-4">🏔️</Text>
+          <Text className="text-white font-bold text-xl text-center mb-2">
+            No Sets Logged
+          </Text>
+          <Text className="text-slate-400 text-sm text-center leading-5">
+            You showed up — that's the hardest part. Come back and crush it next
+            time.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   const handleShare = async () => {
     try {
       const uri = await captureRef(viewShotRef, {

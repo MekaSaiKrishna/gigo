@@ -125,4 +125,23 @@ describe("SummaryCard", () => {
     render(<SummaryCard summary={summary} />);
     expect(screen.getByText("1h 30m")).toBeTruthy();
   });
+
+  it("renders empty-session guard when totalSets is 0", () => {
+    const summary: SessionSummary = {
+      ...mockSummary,
+      totalVolume: 0,
+      totalSets: 0,
+      exercises: [],
+    };
+    render(<SummaryCard summary={summary} />);
+    expect(screen.getByText("No Sets Logged")).toBeTruthy();
+    expect(
+      screen.getByText(
+        /You showed up — that's the hardest part/
+      )
+    ).toBeTruthy();
+    // Should NOT show the normal card elements
+    expect(screen.queryByText("TOTAL VOLUME")).toBeNull();
+    expect(screen.queryByText("Download Image")).toBeNull();
+  });
 });

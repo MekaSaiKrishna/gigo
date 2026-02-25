@@ -15,6 +15,12 @@ export default function HomeScreen() {
         </Pressable>
       </Link>
 
+      <Link href="/history" asChild>
+        <Pressable className="bg-surface rounded-2xl px-10 py-4 mb-4 w-full items-center border border-accent">
+          <Text className="text-text text-lg">Workout History</Text>
+        </Pressable>
+      </Link>
+
       <Link href="/exercises" asChild>
         <Pressable className="bg-surface rounded-2xl px-10 py-4 mb-4 w-full items-center border border-accent">
           <Text className="text-text text-lg">Exercise Library</Text>

@@ -59,6 +59,17 @@ export interface SessionSummary {
   exercises: ExerciseSummary[];
 }
 
+/** Lightweight row for the workout history list */
+export interface SessionHistoryItem {
+  id: number;
+  started_at: string;
+  ended_at: string | null;
+  vibe: VibeLevel;
+  total_volume: number;
+  total_sets: number;
+  duration_minutes: number;
+}
+
 /** Vibe-based rep/set multipliers */
 export const VIBE_MULTIPLIERS: Record<VibeLevel, { sets: number; reps: number }> = {
   low: { sets: 0.75, reps: 0.8 },

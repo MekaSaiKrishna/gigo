@@ -8,6 +8,7 @@ jest.mock("expo-router", () => ({
   useRouter: () => ({ replace: mockReplace }),
 }));
 
+const mockEndSession = jest.fn(() => Promise.resolve());
 jest.mock("../src/lib/database", () => ({
   getAllExercises: jest.fn(() =>
     Promise.resolve([
@@ -21,7 +22,7 @@ jest.mock("../src/lib/database", () => ({
   getGhostValues: jest.fn(() => Promise.resolve(null)),
   addSet: jest.fn(() => Promise.resolve(1)),
   deleteSet: jest.fn(() => Promise.resolve()),
-  endSession: jest.fn(() => Promise.resolve()),
+  endSession: mockEndSession,
 }));
 
 jest.mock("../src/components/ExerciseDemo", () => {
@@ -95,5 +96,40 @@ describe("WorkoutScreen", () => {
   it("displays vibe info", () => {
     render(<WorkoutScreen />);
     expect(screen.getByText(/Vibe: Normal/)).toBeTruthy();
+  });
+
+  it("shows error alert when endSession fails", async () => {
+    const alertSpy = jest.spyOn(
+      require("react-native").Alert,
+      "alert"
+    );
+    mockEndSession.mockRejectedValueOnce(new Error("DB failure"));
+
+    render(<WorkoutScreen />);
+    fireEvent.press(screen.getByText("End Session"));
+
+    // The first Alert.alert is the confirmation dialog
+    expect(alertSpy).toHaveBeenCalledWith(
+      "End Session",
+      "Finish this workout?",
+      expect.any(Array)
+    );
+
+    // Simulate pressing "End" in the confirmation dialog
+    const confirmCall = alertSpy.mock.calls[0];
+    const buttons = confirmCall[2] as any[];
+    const endButton = buttons.find((b: any) => b.text === "End");
+    await endButton.onPress();
+
+    // The error alert should fire
+    expect(alertSpy).toHaveBeenCalledWith(
+      "Error",
+      "Could not end the session. Please try again."
+    );
+
+    // Should NOT navigate
+    expect(mockReplace).not.toHaveBeenCalled();
+
+    alertSpy.mockRestore();
   });
 });
