@@ -28,6 +28,8 @@ export interface Session {
   vibe: VibeLevel;
   elapsed_time: number;
   is_paused: boolean;
+  session_name?: string | null;
+  display_name?: string;
 }
 
 export interface WorkoutSet {

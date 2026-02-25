@@ -41,11 +41,14 @@ interface RawSessionRow {
   vibe: number;
   elapsed_time: number;
   is_paused: number;
+  session_name: string | null;
+  workout_number: number;
 }
 
 interface RawHistorySessionRow extends RawSessionRow {
   total_volume: number;
   set_count: number;
+  display_name: string;
 }
 
 export interface HistorySession {
@@ -55,6 +58,8 @@ export interface HistorySession {
   vibe: VibeLevel;
   elapsed_time: number;
   is_paused: boolean;
+  session_name: string | null;
+  display_name: string;
   total_volume: number;
   set_count: number;
 }
@@ -87,7 +92,7 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
 }
 
 // Increment this when adding a new migration to DB_MIGRATIONS below.
-const CURRENT_DB_VERSION = 3;
+const CURRENT_DB_VERSION = 4;
 
 // Sequential migrations. Each entry takes the DB from version N to N+1.
 // NEVER modify existing entries — only append new ones.
@@ -95,6 +100,7 @@ const DB_MIGRATIONS: Array<(db: SQLite.SQLiteDatabase) => Promise<void>> = [
   migrateLegacySessionsIfNeeded, // 0 → 1
   ensureSessionTimerColumns,      // 1 → 2
   ensureSetsCascadeDelete,        // 2 → 3
+  ensureSessionNameColumn,        // 3 → 4
 ];
 
 async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
@@ -126,7 +132,8 @@ export async function initDatabase(database: SQLite.SQLiteDatabase) {
       end_time INTEGER,
       vibe INTEGER NOT NULL,
       elapsed_time INTEGER NOT NULL DEFAULT 0,
-      is_paused INTEGER NOT NULL DEFAULT 0
+      is_paused INTEGER NOT NULL DEFAULT 0,
+      session_name TEXT
     );
 
     CREATE TABLE IF NOT EXISTS sets (
@@ -175,10 +182,11 @@ async function migrateLegacySessionsIfNeeded(database: SQLite.SQLiteDatabase) {
       end_time INTEGER,
       vibe INTEGER NOT NULL,
       elapsed_time INTEGER NOT NULL DEFAULT 0,
-      is_paused INTEGER NOT NULL DEFAULT 0
+      is_paused INTEGER NOT NULL DEFAULT 0,
+      session_name TEXT
     );
 
-    INSERT INTO sessions (id, start_time, end_time, vibe, elapsed_time, is_paused)
+    INSERT INTO sessions (id, start_time, end_time, vibe, elapsed_time, is_paused, session_name)
     SELECT
       id,
       COALESCE(CAST(strftime('%s', started_at) AS INTEGER) * 1000, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
@@ -192,7 +200,8 @@ async function migrateLegacySessionsIfNeeded(database: SQLite.SQLiteDatabase) {
         ELSE 1
       END,
       0,
-      0
+      0,
+      NULL
     FROM sessions_legacy;
 
     ALTER TABLE sets RENAME TO sets_legacy;
@@ -273,6 +282,13 @@ async function ensureSetsCascadeDelete(database: SQLite.SQLiteDatabase) {
   `);
 }
 
+async function ensureSessionNameColumn(database: SQLite.SQLiteDatabase) {
+  const hasSessionName = await hasColumn(database, "sessions", "session_name");
+  if (!hasSessionName) {
+    await database.execAsync("ALTER TABLE sessions ADD COLUMN session_name TEXT");
+  }
+}
+
 async function seedExercises(database: SQLite.SQLiteDatabase) {
   const existing = await database.getFirstAsync<{ count: number }>(
     "SELECT COUNT(*) as count FROM exercises"
@@ -305,12 +321,47 @@ export async function getExercisesByMuscleGroup(muscleGroup: string): Promise<Ex
 // ── Sessions ───────────────────────────────────────────────
 
 export async function startSession(vibe: VibeLevel): Promise<number> {
+  return startSessionWithName(vibe, null);
+}
+
+function normalizeSessionName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const trimmed = name.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function buildDefaultWorkoutName(workoutNumber: number): string {
+  const safeNumber = Math.max(1, Math.floor(workoutNumber));
+  return `Workout - ${safeNumber}`;
+}
+
+function resolveSessionDisplayName(
+  sessionName: string | null,
+  workoutNumber: number
+): string {
+  return sessionName && sessionName.trim().length > 0
+    ? sessionName.trim()
+    : buildDefaultWorkoutName(workoutNumber);
+}
+
+export async function startSessionWithName(
+  vibe: VibeLevel,
+  sessionName?: string | null
+): Promise<number> {
   const db = await getDatabase();
   const result = await db.runAsync(
-    "INSERT INTO sessions (start_time, vibe, elapsed_time, is_paused) VALUES (?, ?, 0, 0)",
-    [Date.now(), VIBE_TO_INT[vibe]]
+    "INSERT INTO sessions (start_time, vibe, elapsed_time, is_paused, session_name) VALUES (?, ?, 0, 0, ?)",
+    [Date.now(), VIBE_TO_INT[vibe], normalizeSessionName(sessionName)]
   );
   return Number(result.lastInsertRowId);
+}
+
+export async function renameSession(sessionId: number, sessionName: string | null): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync("UPDATE sessions SET session_name = ? WHERE id = ?", [
+    normalizeSessionName(sessionName),
+    sessionId,
+  ]);
 }
 
 export async function endSession(sessionId: number): Promise<void> {
@@ -339,15 +390,51 @@ export async function endSessionWithTimer(
 
 export async function hardDeleteSession(sessionId: number): Promise<void> {
   const db = await getDatabase();
-  // With ON DELETE CASCADE on sets.session_id, deleting a session also removes its sets.
-  await db.runAsync("DELETE FROM sessions WHERE id = ?", [sessionId]);
+  await db.withTransactionAsync(async () => {
+    // Explicit delete protects older installs that might not have cascade applied yet.
+    await db.runAsync("DELETE FROM sets WHERE session_id = ?", [sessionId]);
+    await db.runAsync("DELETE FROM sessions WHERE id = ?", [sessionId]);
+
+    // Clean orphaned set residue (defensive consistency guard).
+    await db.runAsync(
+      "DELETE FROM sets WHERE session_id NOT IN (SELECT id FROM sessions)"
+    );
+
+    const remaining = await db.getFirstAsync<{ count: number }>(
+      "SELECT COUNT(*) as count FROM sessions"
+    );
+    if ((remaining?.count ?? 0) === 0) {
+      // If no sessions remain, purge any leftover workout rows.
+      await db.runAsync("DELETE FROM sets");
+    }
+  });
 }
 
 export async function getSession(sessionId: number): Promise<Session | null> {
   const db = await getDatabase();
-  const session = await db.getFirstAsync<RawSessionRow>("SELECT * FROM sessions WHERE id = ?", [
-    sessionId,
-  ]);
+  const session = await db.getFirstAsync<RawSessionRow>(
+    `WITH ranked AS (
+      SELECT s.id, ROW_NUMBER() OVER (ORDER BY s.end_time ASC, s.id ASC) AS workout_number
+      FROM sessions s
+      WHERE s.end_time IS NOT NULL
+        AND EXISTS (SELECT 1 FROM sets st WHERE st.session_id = s.id)
+    )
+    SELECT
+      s.*,
+      COALESCE(
+        r.workout_number,
+        (
+          SELECT COUNT(*) + 1
+          FROM sessions s2
+          WHERE s2.end_time IS NOT NULL
+            AND EXISTS (SELECT 1 FROM sets st2 WHERE st2.session_id = s2.id)
+        )
+      ) AS workout_number
+    FROM sessions s
+    LEFT JOIN ranked r ON r.id = s.id
+    WHERE s.id = ?`,
+    [sessionId]
+  );
   if (!session) return null;
 
   return {
@@ -357,6 +444,8 @@ export async function getSession(sessionId: number): Promise<Session | null> {
     vibe: INT_TO_VIBE[session.vibe] ?? "normal",
     elapsed_time: session.elapsed_time ?? 0,
     is_paused: Boolean(session.is_paused),
+    session_name: session.session_name,
+    display_name: resolveSessionDisplayName(session.session_name, session.workout_number),
   };
 }
 
@@ -374,15 +463,27 @@ export async function getSessionsForMonth(year: number, month: number): Promise<
       s.vibe,
       s.elapsed_time,
       s.is_paused,
+      s.session_name,
+      COALESCE(
+        NULLIF(TRIM(s.session_name), ''),
+        'Workout - ' || r.workout_number
+      ) AS display_name,
       COALESCE(SUM(st.weight * st.reps), 0) AS total_volume,
       COUNT(st.id) AS set_count
     FROM sessions s
+    LEFT JOIN (
+      SELECT s2.id, ROW_NUMBER() OVER (ORDER BY s2.end_time ASC, s2.id ASC) AS workout_number
+      FROM sessions s2
+      WHERE s2.end_time IS NOT NULL
+        AND EXISTS (SELECT 1 FROM sets st2 WHERE st2.session_id = s2.id)
+    ) r ON r.id = s.id
     LEFT JOIN sets st ON st.session_id = s.id
     WHERE s.end_time IS NOT NULL
-      AND s.start_time >= ?
-      AND s.start_time < ?
+      AND s.end_time >= ?
+      AND s.end_time < ?
     GROUP BY s.id
-    ORDER BY s.start_time DESC`,
+    HAVING COUNT(st.id) > 0
+    ORDER BY s.end_time DESC`,
     [monthStartMs, monthEndMs]
   );
 
@@ -393,6 +494,8 @@ export async function getSessionsForMonth(year: number, month: number): Promise<
     vibe: INT_TO_VIBE[session.vibe] ?? "normal",
     elapsed_time: session.elapsed_time ?? 0,
     is_paused: Boolean(session.is_paused),
+    session_name: session.session_name,
+    display_name: session.display_name,
     total_volume: Number(session.total_volume ?? 0),
     set_count: Number(session.set_count ?? 0),
   }));
@@ -401,7 +504,28 @@ export async function getSessionsForMonth(year: number, month: number): Promise<
 export async function getActiveSession(): Promise<Session | null> {
   const db = await getDatabase();
   const session = await db.getFirstAsync<RawSessionRow>(
-    "SELECT * FROM sessions WHERE end_time IS NULL ORDER BY start_time DESC LIMIT 1"
+    `WITH ranked AS (
+      SELECT s.id, ROW_NUMBER() OVER (ORDER BY s.end_time ASC, s.id ASC) AS workout_number
+      FROM sessions s
+      WHERE s.end_time IS NOT NULL
+        AND EXISTS (SELECT 1 FROM sets st WHERE st.session_id = s.id)
+    )
+    SELECT
+      s.*,
+      COALESCE(
+        r.workout_number,
+        (
+          SELECT COUNT(*) + 1
+          FROM sessions s2
+          WHERE s2.end_time IS NOT NULL
+            AND EXISTS (SELECT 1 FROM sets st2 WHERE st2.session_id = s2.id)
+        )
+      ) AS workout_number
+    FROM sessions s
+    LEFT JOIN ranked r ON r.id = s.id
+    WHERE s.end_time IS NULL
+    ORDER BY s.start_time DESC
+    LIMIT 1`
   );
   if (!session) return null;
 
@@ -412,6 +536,8 @@ export async function getActiveSession(): Promise<Session | null> {
     vibe: INT_TO_VIBE[session.vibe] ?? "normal",
     elapsed_time: session.elapsed_time ?? 0,
     is_paused: Boolean(session.is_paused),
+    session_name: session.session_name,
+    display_name: resolveSessionDisplayName(session.session_name, session.workout_number),
   };
 }
 
@@ -514,7 +640,9 @@ export async function getSessionVolume(sessionId: number): Promise<number> {
 export async function getTotalVolume(): Promise<number> {
   const db = await getDatabase();
   const row = await db.getFirstAsync<{ total: number }>(
-    "SELECT COALESCE(SUM(weight * reps), 0) as total FROM sets"
+    `SELECT COALESCE(SUM(st.weight * st.reps), 0) as total
+     FROM sets st
+     INNER JOIN sessions s ON s.id = st.session_id`
   );
   return row?.total ?? 0;
 }
@@ -551,13 +679,10 @@ export async function getSessionSummary(sessionId: number): Promise<SessionSumma
     [sessionId]
   );
 
-  // Calculate duration in minutes
-  let durationMinutes = 0;
-  if (session.started_at && session.ended_at) {
-    const start = new Date(session.started_at + "Z").getTime();
-    const end = new Date(session.ended_at + "Z").getTime();
-    durationMinutes = Math.max(1, Math.round((end - start) / 60000));
-  }
+  const durationMinutes = Math.max(
+    0,
+    Math.round((session.elapsed_time ?? 0) / 60)
+  );
 
   return {
     session,

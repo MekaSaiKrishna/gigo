@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { View, Text, Pressable, ActivityIndicator } from "react-native";
 import { Link, useFocusEffect, useRouter } from "expo-router";
 import { getActiveSession } from "../src/lib/database";
@@ -20,6 +20,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const [activeSession, setActiveSession] = useState<Session | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
+  const [liveElapsed, setLiveElapsed] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -31,6 +32,7 @@ export default function HomeScreen() {
           const session = await getActiveSession();
           if (!mounted) return;
           setActiveSession(session);
+          setLiveElapsed(session?.elapsed_time ?? 0);
         } finally {
           if (mounted) setLoadingSession(false);
         }
@@ -43,6 +45,14 @@ export default function HomeScreen() {
       };
     }, [])
   );
+
+  useEffect(() => {
+    if (!activeSession || activeSession.is_paused) return;
+    const timer = setInterval(() => {
+      setLiveElapsed((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [activeSession]);
 
   const handleStartSession = () => {
     router.push("/vibe-check");
@@ -59,28 +69,28 @@ export default function HomeScreen() {
       <Text className="text-lg text-text-muted mb-10">Minimalist Fitness. Maximum Ascent.</Text>
 
       <Pressable
-        onPress={handleStartSession}
+        onPress={activeSession ? handleResumeSession : handleStartSession}
         disabled={loadingSession}
         className="bg-primary rounded-2xl px-10 py-4 mb-4 w-full items-center"
       >
         {loadingSession ? (
           <ActivityIndicator color="#eaeaea" />
         ) : (
-          <Text className="text-text text-xl font-bold">Start Session</Text>
+          <>
+            <Text className="text-text text-xl font-bold">
+              {activeSession ? "Resume Session" : "Start Session"}
+            </Text>
+            {activeSession ? (
+              <>
+                <Text className="text-text/80 text-xs mt-1">{activeSession.display_name ?? "Workout"}</Text>
+                <Text className="text-text/80 text-xs mt-0.5">
+                  Elapsed: {formatElapsedTime(liveElapsed)}
+                </Text>
+              </>
+            ) : null}
+          </>
         )}
       </Pressable>
-
-      {activeSession && !loadingSession ? (
-        <Pressable
-          onPress={handleResumeSession}
-          className="bg-surface rounded-2xl px-10 py-4 mb-4 w-full items-center border border-accent"
-        >
-          <Text className="text-text text-lg font-semibold">Resume Session</Text>
-          <Text className="text-text-muted text-xs mt-1">
-            Elapsed: {formatElapsedTime(activeSession.elapsed_time)}
-          </Text>
-        </Pressable>
-      ) : null}
 
       <Link href="/exercises" asChild>
         <Pressable className="bg-surface rounded-2xl px-10 py-4 mb-4 w-full items-center border border-accent">

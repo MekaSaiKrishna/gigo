@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { View, Text, Pressable, ActivityIndicator, ScrollView } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import Animated, { FadeIn, ZoomIn } from "react-native-reanimated";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { getSessionSummary } from "../src/lib/database";
 import SummaryCard from "../src/components/SummaryCard";
 import type { SessionSummary } from "../src/types";
+import { formatDuration, formatSessionDate, formatVibeLabel } from "../src/utils/date-format";
 
 export default function WorkoutCompleteScreen() {
   const { sessionId: rawId } = useLocalSearchParams<{ sessionId: string }>();
@@ -59,7 +60,19 @@ export default function WorkoutCompleteScreen() {
       <Animated.View
         entering={FadeIn.delay(150).duration(500)}
       >
-        <SummaryCard summary={summary} />
+        <SummaryCard
+          sessionName={summary.session.display_name ?? "Workout"}
+          totalVolume={summary.totalVolume}
+          sessionDuration={formatDuration(summary.session.elapsed_time ?? summary.durationMinutes * 60)}
+          sessionDate={formatSessionDate(summary.session.end_time ?? summary.session.start_time)}
+          vibeLabel={formatVibeLabel(summary.session.vibe)}
+          exercises={summary.exercises.map((exercise) => ({
+            name: exercise.exercise_name,
+            sets: exercise.set_count,
+            reps: 1,
+          }))}
+          size={320}
+        />
       </Animated.View>
 
       <Animated.View entering={FadeIn.delay(400).duration(400)}>

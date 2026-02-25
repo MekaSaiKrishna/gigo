@@ -5,6 +5,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import type { HistorySession, SessionSetDetail } from "../lib/database";
 import { formatDuration, formatVibeLabel, formatSessionDateTime } from "../utils/date-format";
+import { getSessionTheme } from "../utils/session-theme";
 
 interface HistoryDetailModalProps {
   visible: boolean;
@@ -32,6 +33,8 @@ export default function HistoryDetailModal({
     }
     return [...map.entries()];
   }, [sets]);
+  const sessionTimestamp = session?.end_time ?? session?.start_time ?? Date.now();
+  const theme = getSessionTheme(sessionTimestamp);
 
   return (
     <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
@@ -42,15 +45,23 @@ export default function HistoryDetailModal({
       >
         <Pressable className="absolute inset-0" onPress={onClose} />
         <Animated.View entering={ZoomIn.duration(220)} exiting={ZoomOut.duration(180)} className="w-full">
-          <View className="rounded-3xl overflow-hidden border border-slate-700/60">
-            <LinearGradient colors={["#020617", "#0f172a", "#1e293b"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+          <View className="rounded-3xl overflow-hidden" style={{ borderWidth: 1, borderColor: theme.cardBorder }}>
+            <LinearGradient colors={theme.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
               <View className="p-5">
                 <View className="flex-row items-start justify-between">
                   <View className="flex-1 pr-3">
-                    <Text className="text-white text-2xl font-bold">Workout Report</Text>
-                    <Text className="text-slate-400 text-xs mt-1 tracking-widest uppercase">
-                      {session ? formatSessionDateTime(session.start_time) : "Session"}
+                    <Text className="text-white text-2xl font-bold">
+                      {session?.display_name ?? "Workout Report"}
                     </Text>
+                    <Text className="text-slate-400 text-xs mt-1 tracking-widest uppercase">
+                      {session ? formatSessionDateTime(session.end_time ?? session.start_time) : "Session"}
+                    </Text>
+                    <View className="flex-row items-center mt-1.5">
+                      <Feather name={theme.icon} size={12} color={theme.chipText} />
+                      <Text className="ml-1 text-[10px] uppercase tracking-widest" style={{ color: theme.chipText }}>
+                        {theme.label}
+                      </Text>
+                    </View>
                   </View>
                   <Pressable onPress={onClose} className="rounded-lg bg-slate-800/70 px-3 py-2">
                     <Text className="text-slate-200 text-xs font-semibold">Close</Text>
@@ -90,16 +101,29 @@ export default function HistoryDetailModal({
                     {groupedSets.length === 0 ? (
                       <Text className="text-slate-400 text-sm">No sets logged.</Text>
                     ) : (
-                      groupedSets.map(([exerciseName, exerciseSets]) => (
-                        <View key={exerciseName} className="mb-3">
-                          <Text className="text-white text-sm font-semibold mb-1">{exerciseName}</Text>
-                          {exerciseSets.map((set, index) => (
-                            <Text key={set.id} className="text-slate-300 text-sm">
-                              Set {index + 1}: {set.weight} x {set.reps}
+                      <View className="flex-row flex-wrap justify-between">
+                        {groupedSets.map(([exerciseName, exerciseSets]) => (
+                          <View
+                            key={exerciseName}
+                            className="rounded-lg px-2.5 py-2 mb-2"
+                            style={{
+                              width: "48%",
+                              backgroundColor: theme.chipBg,
+                              borderWidth: 1,
+                              borderColor: theme.chipBorder,
+                            }}
+                          >
+                            <Text className="text-white text-sm font-semibold mb-1" numberOfLines={1}>
+                              {exerciseName}
                             </Text>
-                          ))}
-                        </View>
-                      ))
+                            {exerciseSets.map((set, index) => (
+                              <Text key={set.id} className="text-slate-200 text-xs">
+                                {index + 1}. {set.weight} x {set.reps}
+                              </Text>
+                            ))}
+                          </View>
+                        ))}
+                      </View>
                     )}
                   </ScrollView>
                 </View>

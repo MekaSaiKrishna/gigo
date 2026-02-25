@@ -1,8 +1,18 @@
 import "../global.css";
-import { Component, type ReactNode } from "react";
+import { Component, type ReactNode, useEffect } from "react";
 import { View, Text, Pressable } from "react-native";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import {
+  NOTIF_ACTION_END,
+  NOTIF_ACTION_PAUSE,
+  NOTIF_ACTION_PLAY,
+  areSessionNotificationsAvailable,
+  configureSessionNotifications,
+  notifySessionEnded,
+  syncSessionNotification,
+} from "../src/lib/session-notifications";
+import { endSessionWithTimer, getActiveSession, updateSessionTimer } from "../src/lib/database";
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -57,6 +67,58 @@ class RootErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundary
 }
 
 export default function RootLayout() {
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!areSessionNotificationsAvailable()) return;
+
+    const Notifications = require("expo-notifications");
+    void configureSessionNotifications();
+
+    const handleResponse = async (response: any) => {
+      const action = response?.actionIdentifier;
+      const target = response?.notification?.request?.content?.data?.target;
+      const active = await getActiveSession();
+      if (!active) {
+        await syncSessionNotification(null);
+        if (target === "home") {
+          router.replace("/");
+        }
+        return;
+      }
+
+      if (action === NOTIF_ACTION_PAUSE) {
+        await updateSessionTimer(active.id, active.elapsed_time, true);
+      } else if (action === NOTIF_ACTION_PLAY) {
+        await updateSessionTimer(active.id, active.elapsed_time, false);
+      } else if (action === NOTIF_ACTION_END) {
+        const endedName = active.display_name ?? "Workout";
+        await endSessionWithTimer(active.id, active.elapsed_time);
+        await notifySessionEnded(endedName);
+        router.replace("/");
+      } else {
+        router.push(`/workout?sessionId=${active.id}&vibe=${active.vibe}`);
+      }
+
+      const refreshed = await getActiveSession();
+      await syncSessionNotification(refreshed);
+    };
+
+    void Notifications.getLastNotificationResponseAsync?.().then((response: any) => {
+      if (response) {
+        void handleResponse(response);
+      }
+    });
+
+    const subscription = Notifications.addNotificationResponseReceivedListener((response: any) => {
+      void handleResponse(response);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [router]);
+
   return (
     <RootErrorBoundary>
       <StatusBar style="light" />

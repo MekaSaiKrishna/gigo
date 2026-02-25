@@ -9,7 +9,8 @@ jest.mock("expo-router", () => ({
   Link: ({ children }: { children: React.ReactNode }) => children,
   useRouter: () => ({ push: mockPush }),
   useFocusEffect: (effect: () => void | (() => void)) => {
-    effect();
+    const React = require("react");
+    React.useEffect(() => effect(), [effect]);
   },
 }));
 
@@ -26,10 +27,12 @@ describe("HomeScreen", () => {
     mockGetActiveSession.mockResolvedValue(null);
     render(<HomeScreen />);
 
-    expect(screen.getByText("GiGoFit")).toBeTruthy();
-    expect(screen.getByText("Exercise Library")).toBeTruthy();
-    expect(screen.getByText("Analytics")).toBeTruthy();
-    expect(screen.getByText("The Ascent")).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText("GiGoFit")).toBeTruthy();
+      expect(screen.getByText("Exercise Library")).toBeTruthy();
+      expect(screen.getByText("Analytics")).toBeTruthy();
+      expect(screen.getByText("Start Session")).toBeTruthy();
+    });
   });
 
   it("shows Start Session when there is no active session", async () => {
@@ -41,7 +44,7 @@ describe("HomeScreen", () => {
     });
   });
 
-  it("shows Resume Session and elapsed timer when an active session exists", async () => {
+  it("shows Resume Session CTA and elapsed timer when an active session exists", async () => {
     mockGetActiveSession.mockResolvedValue({
       id: 11,
       start_time: 1700000000000,
@@ -49,11 +52,13 @@ describe("HomeScreen", () => {
       vibe: "normal",
       elapsed_time: 125,
       is_paused: false,
+      display_name: "Workout - 3",
     });
     render(<HomeScreen />);
 
     await waitFor(() => {
       expect(screen.getByText("Resume Session")).toBeTruthy();
+      expect(screen.getByText("Workout - 3")).toBeTruthy();
       expect(screen.getByText("Elapsed: 00:02:05")).toBeTruthy();
     });
   });
@@ -78,6 +83,7 @@ describe("HomeScreen", () => {
       vibe: "low",
       elapsed_time: 22,
       is_paused: true,
+      display_name: "Workout - 1",
     });
     render(<HomeScreen />);
 

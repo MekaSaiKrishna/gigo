@@ -13,9 +13,10 @@ const mockAddSet = jest.fn();
 const mockDeleteSet = jest.fn();
 const mockUpdateSet = jest.fn();
 const mockGetActiveSession = jest.fn();
-const mockEndSession = jest.fn();
+const mockEndSessionWithTimer = jest.fn();
 const mockGetSession = jest.fn();
 const mockUpdateSessionTimer = jest.fn();
+const mockRenameSession = jest.fn();
 
 jest.mock("expo-router", () => ({
   useLocalSearchParams: () => ({ sessionId: "1", vibe: "normal" }),
@@ -23,11 +24,13 @@ jest.mock("expo-router", () => ({
 }));
 
 jest.mock("react-native-reanimated", () => {
+  const React = require("react");
+  const { View: MockView, Text: MockText } = require("react-native");
   return {
     __esModule: true,
     default: {
-      View,
-      Text,
+      View: MockView,
+      Text: MockText,
     },
     Easing: {
       out: (value: unknown) => value,
@@ -70,11 +73,12 @@ jest.mock("../src/lib/database", () => ({
   getActiveSession: () => mockGetActiveSession(),
   getSetsForSession: (...args: unknown[]) => mockGetSetsForSession(...args),
   getGhostValues: (...args: unknown[]) => mockGetGhostValues(...args),
-  endSession: (...args: unknown[]) => mockEndSession(...args),
+  endSessionWithTimer: (...args: unknown[]) => mockEndSessionWithTimer(...args),
   getSession: (...args: unknown[]) => mockGetSession(...args),
   getSessionVolume: (...args: unknown[]) => mockGetSessionVolume(...args),
   getTotalVolume: () => mockGetTotalVolume(),
   updateSessionTimer: (...args: unknown[]) => mockUpdateSessionTimer(...args),
+  renameSession: (...args: unknown[]) => mockRenameSession(...args),
 }));
 
 jest.mock("../src/lib/analytics", () => ({
@@ -89,18 +93,31 @@ jest.mock("../src/lib/analytics", () => ({
 }));
 
 jest.mock("../src/components/ExerciseDemo", () => {
+  const React = require("react");
+  const { Text: MockText } = require("react-native");
   return function MockExerciseDemo({ exerciseName }: { exerciseName: string }) {
-    return <Text testID="exercise-demo">{`Demo: ${exerciseName}`}</Text>;
+    return <MockText testID="exercise-demo">{`Demo: ${exerciseName}`}</MockText>;
   };
 });
 
 jest.mock("../src/components/SummaryCard", () => {
+  const React = require("react");
+  const { Text: MockText } = require("react-native");
   return function MockSummaryCard() {
-    return <Text>Summary Card</Text>;
+    return <MockText>Summary Card</MockText>;
   };
 });
 
 describe("WorkoutScreen", () => {
+  const renderHydratedWorkout = async () => {
+    render(<WorkoutScreen />);
+    await waitFor(() => {
+      expect(mockGetSession).toHaveBeenCalled();
+      expect(mockGetSetsForSession).toHaveBeenCalledWith(1);
+      expect(screen.getByText("End Session")).toBeTruthy();
+    });
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(Alert, "alert").mockImplementation(() => undefined);
@@ -114,7 +131,7 @@ describe("WorkoutScreen", () => {
     mockGetTotalVolume.mockResolvedValue(10000);
     mockGetGhostValues.mockResolvedValue(null);
     mockGetActiveSession.mockResolvedValue(null);
-    mockEndSession.mockResolvedValue(undefined);
+    mockEndSessionWithTimer.mockResolvedValue(undefined);
     mockGetSession.mockResolvedValue({
       id: 1,
       start_time: 1700000000000,
@@ -122,25 +139,27 @@ describe("WorkoutScreen", () => {
       vibe: "normal",
       elapsed_time: 65,
       is_paused: false,
+      display_name: "Workout - 1",
     });
     mockUpdateSessionTimer.mockResolvedValue(undefined);
+    mockRenameSession.mockResolvedValue(undefined);
     mockAddSet.mockResolvedValue(1);
     mockDeleteSet.mockResolvedValue(undefined);
     mockUpdateSet.mockResolvedValue(undefined);
   });
 
   it("renders workout UI with hydrated timer", async () => {
-    render(<WorkoutScreen />);
+    await renderHydratedWorkout();
 
-    expect(screen.getByText("Workout")).toBeTruthy();
+    expect(screen.getByText("End Session")).toBeTruthy();
     await waitFor(() => {
       expect(screen.getByText(/^00:01:0[5-9]$/)).toBeTruthy();
-      expect(screen.getByText("640 kg vol")).toBeTruthy();
+      expect(screen.getByText("640 lb vol")).toBeTruthy();
     });
   });
 
-  it("shows invalid input alert when weight is 0", async () => {
-    render(<WorkoutScreen />);
+  it("allows weight 0 when reps are valid", async () => {
+    await renderHydratedWorkout();
 
     fireEvent.press(screen.getByText("Tap to select exercise"));
     await waitFor(() => {
@@ -154,7 +173,26 @@ describe("WorkoutScreen", () => {
     fireEvent.press(screen.getByText("+"));
 
     await waitFor(() => {
-      expect(Alert.alert).toHaveBeenCalledWith("Invalid Input", "Enter a valid weight and rep count");
+      expect(mockAddSet).toHaveBeenCalledWith(1, 1, 0, 8);
+    });
+  });
+
+  it("shows invalid input when reps are zero", async () => {
+    await renderHydratedWorkout();
+
+    fireEvent.press(screen.getByText("Tap to select exercise"));
+    await waitFor(() => {
+      expect(screen.getByText("Bench Press")).toBeTruthy();
+    });
+    fireEvent.press(screen.getByText("Bench Press"));
+
+    const zeroInputs = screen.getAllByPlaceholderText("0");
+    fireEvent.changeText(zeroInputs[0], "50");
+    fireEvent.changeText(zeroInputs[1], "0");
+    fireEvent.press(screen.getByText("+"));
+
+    await waitFor(() => {
+      expect(Alert.alert).toHaveBeenCalledWith("Invalid Input", "Weight must be 0–1000 and reps must be 1–999");
       expect(mockAddSet).not.toHaveBeenCalled();
     });
   });
@@ -163,7 +201,7 @@ describe("WorkoutScreen", () => {
     mockGetSetsForSession.mockResolvedValue([
       { id: 101, session_id: 1, exercise_id: 1, weight: 80, reps: 8, exercise_name: "Bench Press" },
     ]);
-    render(<WorkoutScreen />);
+    await renderHydratedWorkout();
 
     await waitFor(() => {
       expect(screen.getByText("Bench Press")).toBeTruthy();
@@ -182,13 +220,13 @@ describe("WorkoutScreen", () => {
     mockGetSetsForSession.mockResolvedValue([
       { id: 101, session_id: 1, exercise_id: 1, weight: 80, reps: 8, exercise_name: "Bench Press" },
     ]);
-    render(<WorkoutScreen />);
+    await renderHydratedWorkout();
 
     await waitFor(() => {
-      expect(screen.getByText("80 kg")).toBeTruthy();
+      expect(screen.getByText("80 lb")).toBeTruthy();
     });
 
-    fireEvent.press(screen.getByText("80 kg"));
+    fireEvent.press(screen.getByText("80 lb"));
 
     await waitFor(() => {
       expect(screen.getByText("Save")).toBeTruthy();

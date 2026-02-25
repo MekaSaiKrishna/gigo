@@ -59,6 +59,24 @@ Analytics tests: `__tests__/analytics.test.ts` — 17 tests passing.
 - PRs auto-recalculate when a session is deleted
 - Sectioned PR board grouped by muscle group
 
+### Phase 2.7 — Exercise Library ✅
+
+- `app/exercises.tsx` — full `SectionList` with 42 exercises grouped by muscle group
+- Same section styling as workout picker (sticky headers, primary colour uppercase labels)
+- Tap any exercise → pageSheet modal with `ExerciseDemo` GIF + muscle group + category
+- `ascent.tsx` cleared — redirects to `/`; `getPreviousSessionVibe` and `getLatestSessionVibes` removed from database.ts
+
+### Gamification Stage 1.1 — Stat Engine ✅
+
+- `src/lib/gamification.ts` — five player stats derived from raw SQLite data
+- `computeStrengthStat()` — total volume → `StrengthTier` (Iron Fist / Steel Grip / Mountain Hands / Titan)
+- `computeAgilityStat()` — avg sessions/week trailing 8 active weeks → `AgilityTier` (Crawler / Strider / Sprinter / Ghost)
+- `computeEnduranceStat()` — avg session duration → `EnduranceTier` (Spark / Ember / Blaze / Inferno)
+- `computeFocusCount()` — Low Energy sessions ≥ 90% prior volume
+- `computeFuryCount()` — Crushing It completed sessions
+- `getAllStats()` — all five in parallel
+- Tests: `__tests__/gamification.test.ts` — **37 tests, 37 passing**
+
 ### Phase 2.6 — Code Quality & Stability ✅ (Feb 2026 Audit Fixes)
 
 - `PRAGMA user_version` migration runner — migrations run only once, sequential, versioned
@@ -177,8 +195,31 @@ Analytics tests: `__tests__/analytics.test.ts` — 17 tests passing.
 - New screens must be covered by at least basic render tests
 - Do not create summary/cache tables — derive everything from `sessions` + `sets` via SQL
 
+## Notifications Rules
+
+### Notification Idea 1
+
+- Trigger: when a user starts a session, show an active-session notification immediately.
+- Active notification body must show running state and timer (updated from persisted elapsed time).
+- Active notification actions:
+  - `Pause` pauses timer
+  - `Play` resumes timer
+  - `End` ends session
+- Tapping the notification (default press) opens the app and routes back to the active workout session.
+- End behavior:
+  - After ending, active notification is replaced by:
+    - `Session Complete`
+    - `Kudos! Your '<Workout name>' has ended`
+- Workout naming source of truth:
+  - If user provides a name, use that.
+  - Otherwise fallback to deterministic default `Workout - #`.
+  - `#` is based on ordered completed sessions in local DB.
+  - If all history is deleted and user starts new session, default name resets to `Workout - 1`.
+
 ______
 THESE MUST BE FOLLOWED AT ALL TIMES BY CLAUDE or CODEX! (NON-NEGOTIABLE)
+
+Doc sync note: Updated with current Notification Idea 1 rules and retained as source-of-truth constraints (2026-02-25).
 ## Workflow Orchestration
 ### 1. Plan Node Default
 - Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)

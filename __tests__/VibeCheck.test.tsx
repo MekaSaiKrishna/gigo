@@ -10,7 +10,7 @@ jest.mock("expo-router", () => ({
 }));
 
 jest.mock("../src/lib/database", () => ({
-  startSession: (vibe: string) => mockStartSession(vibe),
+  startSessionWithName: (vibe: string, sessionName?: string) => mockStartSession(vibe, sessionName),
 }));
 
 describe("VibeCheckScreen", () => {
@@ -38,6 +38,18 @@ describe("VibeCheckScreen", () => {
     fireEvent.press(screen.getByText("Normal"));
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith("/workout?sessionId=42&vibe=normal");
+      expect(mockStartSession).toHaveBeenCalledWith("normal", "");
+    });
+  });
+
+  it("passes optional session name when provided", async () => {
+    mockStartSession.mockResolvedValue(77);
+    render(<VibeCheckScreen />);
+    fireEvent.changeText(screen.getByPlaceholderText("Workout - #"), "Push Day");
+    fireEvent.press(screen.getByText("Crushing It"));
+    await waitFor(() => {
+      expect(mockStartSession).toHaveBeenCalledWith("crushing", "Push Day");
+      expect(mockPush).toHaveBeenCalledWith("/workout?sessionId=77&vibe=crushing");
     });
   });
 

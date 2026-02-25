@@ -62,10 +62,11 @@ export async function getWeeklyVolume(weeks: number = 8): Promise<Array<{ week: 
   const db = await getDatabase();
   const rows = await db.getAllAsync<{ week: string; total_volume: number }>(
     `SELECT
-      strftime('%Y-%W', datetime(s.start_time / 1000, 'unixepoch')) AS week,
+      strftime('%Y-%W', datetime(s.end_time / 1000, 'unixepoch', 'localtime')) AS week,
       SUM(sets.weight * sets.reps) AS total_volume
     FROM sessions s
     JOIN sets ON sets.session_id = s.id
+    WHERE s.end_time IS NOT NULL
     GROUP BY week
     ORDER BY week DESC
     LIMIT ?`,
@@ -81,10 +82,11 @@ export async function getMonthlyVolume(
   const db = await getDatabase();
   const rows = await db.getAllAsync<{ month: string; total_volume: number }>(
     `SELECT
-      strftime('%Y-%m', datetime(s.start_time / 1000, 'unixepoch')) AS month,
+      strftime('%Y-%m', datetime(s.end_time / 1000, 'unixepoch', 'localtime')) AS month,
       SUM(sets.weight * sets.reps) AS total_volume
     FROM sessions s
     JOIN sets ON sets.session_id = s.id
+    WHERE s.end_time IS NOT NULL
     GROUP BY month
     ORDER BY month DESC
     LIMIT ?`,
@@ -98,11 +100,12 @@ export async function getExerciseWeeklyMax(exerciseId: number): Promise<Exercise
   const db = await getDatabase();
   return db.getAllAsync<ExerciseWeeklyMaxPoint>(
     `SELECT
-      strftime('%Y-%W', datetime(s.start_time / 1000, 'unixepoch')) AS week,
+      strftime('%Y-%W', datetime(s.end_time / 1000, 'unixepoch', 'localtime')) AS week,
       MAX(sets.weight) AS max_weight
     FROM sessions s
     JOIN sets ON sets.session_id = s.id
     WHERE sets.exercise_id = ?
+      AND s.end_time IS NOT NULL
     GROUP BY week
     ORDER BY week ASC`,
     [exerciseId]
@@ -115,11 +118,12 @@ export async function getExerciseWeeklyEstimated1RM(
   const db = await getDatabase();
   return db.getAllAsync<ExerciseWeekly1RMPoint>(
     `SELECT
-      strftime('%Y-%W', datetime(s.start_time / 1000, 'unixepoch')) AS week,
+      strftime('%Y-%W', datetime(s.end_time / 1000, 'unixepoch', 'localtime')) AS week,
       MAX(sets.weight * (1 + sets.reps / 30.0)) AS max_estimated_1rm
     FROM sessions s
     JOIN sets ON sets.session_id = s.id
     WHERE sets.exercise_id = ?
+      AND s.end_time IS NOT NULL
     GROUP BY week
     ORDER BY week ASC`,
     [exerciseId]
@@ -229,9 +233,9 @@ export async function getMonthlyPRSummary(
   const sessionRows = await db.getAllAsync<MonthSessionRow>(
     `SELECT id
      FROM sessions
-     WHERE start_time >= ? AND start_time < ?
+     WHERE end_time >= ? AND end_time < ?
        AND end_time IS NOT NULL
-     ORDER BY start_time ASC`,
+     ORDER BY end_time ASC`,
     [monthStart, monthEnd]
   );
 
@@ -272,7 +276,7 @@ export async function getComparisonToPreviousSession(
      JOIN sets ON sets.session_id = s.id
      WHERE s.end_time IS NOT NULL
      GROUP BY s.id
-     ORDER BY s.start_time DESC
+     ORDER BY s.end_time DESC
      LIMIT 1 OFFSET 1`
   );
 
@@ -314,7 +318,7 @@ export async function getCoachingComparisonToPreviousSession(
      JOIN sets ON sets.session_id = s.id
      WHERE s.end_time IS NOT NULL
      GROUP BY s.id
-     ORDER BY s.start_time DESC
+     ORDER BY s.end_time DESC
      LIMIT 1 OFFSET 1`
   );
 

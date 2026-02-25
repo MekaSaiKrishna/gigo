@@ -4,6 +4,7 @@ import {
   Text,
   Pressable,
   TextInput,
+  Image,
   FlatList,
   SectionList,
   Alert,
@@ -13,11 +14,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Animated, {
-  Easing,
   FadeInUp,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
 } from "react-native-reanimated";
 import LottieView from "lottie-react-native";
 import * as Sharing from "expo-sharing";
@@ -34,17 +31,18 @@ import {
   getSession,
   getSessionVolume,
   getTotalVolume,
+  renameSession,
   updateSessionTimer,
 } from "../src/lib/database";
 import { VIBE_MULTIPLIERS } from "../src/types";
 import { MUSCLE_GROUP_LABELS, MUSCLE_GROUP_ORDER } from "../src/data/exercise-meta";
 import SummaryCard, { type SummaryExerciseItem } from "../src/components/SummaryCard";
-import { getCoachingComparisonToPreviousSession } from "../src/lib/analytics";
 import {
   formatDuration,
   formatVibeLabel,
   formatSessionDate,
 } from "../src/utils/date-format";
+import { notifySessionEnded } from "../src/lib/session-notifications";
 import type { Exercise, VibeLevel, WorkoutSet, MuscleGroup } from "../src/types";
 
 type SetWithName = WorkoutSet & { exercise_name: string };
@@ -55,14 +53,24 @@ interface ExerciseSection {
 }
 
 interface SessionSummary {
+  sessionName: string;
   totalVolume: number;
   sessionDuration: string;
   sessionDate: string;
+  sessionTimestampMs: number;
   vibeLabel: string;
   exercises: SummaryExerciseItem[];
 }
 
 const CONFETTI_URI = "https://assets2.lottiefiles.com/packages/lf20_obhph3sh.json";
+const CHIBI_SPRITE = require("../assets/maheshsprite.png");
+const SPRITE_FRAMES = 11;
+const SPRITE_FRAME_WIDTH = 121;
+const SPRITE_FRAME_HEIGHT = 158;
+const SPRITE_DISPLAY_HEIGHT = 220;
+const SPRITE_FRAME_DURATION_MS = 55;
+const SPRITE_SCALE = SPRITE_DISPLAY_HEIGHT / SPRITE_FRAME_HEIGHT;
+const SPRITE_DISPLAY_WIDTH = Math.round(SPRITE_FRAME_WIDTH * SPRITE_SCALE);
 const SAFE_MUSCLE_GROUP_ORDER: MuscleGroup[] = [
   "chest",
   "back",
@@ -132,33 +140,23 @@ export default function WorkoutScreen() {
   const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [pendingSummary, setPendingSummary] = useState<SessionSummary | null>(null);
   const [showCelebration, setShowCelebration] = useState(false);
-  const [coachingMessage, setCoachingMessage] = useState("");
   const [showConfetti, setShowConfetti] = useState(false);
+  const [spriteFrame, setSpriteFrame] = useState(0);
   const [isSharing, setIsSharing] = useState(false);
   const [editingSetId, setEditingSetId] = useState<number | null>(null);
   const [editingWeight, setEditingWeight] = useState("");
   const [editingReps, setEditingReps] = useState("");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isTimerPaused, setIsTimerPaused] = useState(false);
+  const [sessionName, setSessionName] = useState("Workout");
+  const [summarySessionName, setSummarySessionName] = useState("");
 
   const summaryCardRef = useRef<ViewShot | null>(null);
   const confettiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const finalizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spriteTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastSavedElapsedRef = useRef(0);
   const elapsedSecondsRef = useRef(0);
   const isTimerPausedRef = useRef(false);
-
-  const celebrationOpacity = useSharedValue(1);
-  const summaryOpacity = useSharedValue(0);
-
-  const celebrationAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: celebrationOpacity.value,
-  }));
-
-  const summaryAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: summaryOpacity.value,
-  }));
 
   useEffect(() => {
     if (Number.isFinite(sessionId) && sessionId > 0) return;
@@ -250,6 +248,7 @@ export default function WorkoutScreen() {
       const initialElapsed = Math.max(0, Math.floor(session.elapsed_time));
       setElapsedSeconds(initialElapsed);
       setIsTimerPaused(session.is_paused);
+      setSessionName(session.display_name ?? "Workout");
       lastSavedElapsedRef.current = initialElapsed;
     };
 
@@ -283,10 +282,33 @@ export default function WorkoutScreen() {
     return () => {
       void persistTimerState(elapsedSecondsRef.current, isTimerPausedRef.current);
       if (confettiTimerRef.current) clearTimeout(confettiTimerRef.current);
-      if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
-      if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current);
+      if (spriteTimerRef.current) clearInterval(spriteTimerRef.current);
     };
   }, [persistTimerState]);
+
+  useEffect(() => {
+    if (!showCelebration) return;
+
+    setShowConfetti(true);
+    setSpriteFrame(0);
+
+    let frame = 0;
+    spriteTimerRef.current = setInterval(() => {
+      frame = (frame + 1) % SPRITE_FRAMES;
+      setSpriteFrame(frame);
+    }, SPRITE_FRAME_DURATION_MS);
+
+    return () => {
+      if (spriteTimerRef.current) {
+        clearInterval(spriteTimerRef.current);
+        spriteTimerRef.current = null;
+      }
+      if (confettiTimerRef.current) {
+        clearTimeout(confettiTimerRef.current);
+        confettiTimerRef.current = null;
+      }
+    };
+  }, [showCelebration]);
 
   useEffect(() => {
     if (!selectedExercise) return;
@@ -437,6 +459,22 @@ export default function WorkoutScreen() {
     }
   };
 
+  const handleSaveSessionName = async () => {
+    if (!Number.isFinite(sessionId) || sessionId <= 0) return;
+    try {
+      await renameSession(sessionId, summarySessionName);
+      const updated = await getSession(sessionId);
+      const trimmed = summarySessionName.trim();
+      const displayName = updated?.display_name ?? (trimmed.length > 0 ? trimmed : "Workout");
+      setSessionName(displayName);
+      setSummarySessionName(displayName);
+      setSummary((prev) => (prev ? { ...prev, sessionName: displayName } : prev));
+      Alert.alert("Saved", "Workout name updated.");
+    } catch {
+      Alert.alert("Error", "Unable to update workout name.");
+    }
+  };
+
   const handleEndSession = () => {
     Alert.alert("End Session", "Finish this workout?", [
       { text: "Cancel", style: "cancel" },
@@ -449,54 +487,40 @@ export default function WorkoutScreen() {
             await endSessionWithTimer(sessionId, elapsedSecondsRef.current);
 
             const endedSession = await getSession(sessionId);
-            const sessionStartTime = endedSession?.start_time ?? Date.now();
-            const coaching = await getCoachingComparisonToPreviousSession(volume, vibe);
+            const endedName = endedSession?.display_name ?? sessionName;
+            await notifySessionEnded(endedName);
+            const sessionLoggedTime = endedSession?.end_time ?? endedSession?.start_time ?? Date.now();
 
             const nextSummary: SessionSummary = {
+              sessionName: endedName,
               totalVolume: volume,
               sessionDuration: formatDuration(elapsedSecondsRef.current),
-              sessionDate: formatSessionDate(sessionStartTime),
+              sessionDate: formatSessionDate(sessionLoggedTime),
+              sessionTimestampMs: sessionLoggedTime,
               vibeLabel: formatVibeLabel(vibe),
               exercises: buildExerciseSummary(sets),
             };
 
             setPendingSummary(nextSummary);
-            setCoachingMessage(coaching.affirmation);
+            setSummarySessionName(nextSummary.sessionName);
             setShowCelebration(true);
-            setShowConfetti(coaching.isOutdone);
-
-            celebrationOpacity.value = 1;
-            summaryOpacity.value = 0;
-
-            if (coaching.isOutdone) {
-              confettiTimerRef.current = setTimeout(() => {
-                setShowConfetti(false);
-              }, 2000);
-            }
-
-            transitionTimerRef.current = setTimeout(() => {
-              celebrationOpacity.value = withTiming(0, {
-                duration: 450,
-                easing: Easing.out(Easing.cubic),
-              });
-              summaryOpacity.value = withTiming(1, {
-                duration: 450,
-                easing: Easing.out(Easing.cubic),
-              });
-            }, 3000);
-
-            finalizeTimerRef.current = setTimeout(() => {
-              setShowCelebration(false);
-              setShowConfetti(false);
-              setSummary(nextSummary);
-              setPendingSummary(null);
-            }, 3550);
           } catch {
             Alert.alert("Error", "Unable to end session.");
           }
         },
       },
     ]);
+  };
+
+  const handleCheckoutSummary = () => {
+    if (!pendingSummary) return;
+    if (confettiTimerRef.current) clearTimeout(confettiTimerRef.current);
+    if (spriteTimerRef.current) clearInterval(spriteTimerRef.current);
+
+    setShowCelebration(false);
+    setShowConfetti(false);
+    setSummary(pendingSummary);
+    setPendingSummary(null);
   };
 
   const selectExercise = (exercise: Exercise) => {
@@ -514,12 +538,31 @@ export default function WorkoutScreen() {
       <View className="flex-1 bg-background px-4 pt-8">
         <Text className="text-2xl font-bold text-text text-center mb-4">Session Complete</Text>
 
+        <View className="bg-surface rounded-2xl p-3 mb-4">
+          <Text className="text-text-muted text-xs uppercase tracking-widest mb-1">Workout Name</Text>
+          <TextInput
+            className="bg-background rounded-xl px-4 py-3 text-text"
+            value={summarySessionName}
+            onChangeText={setSummarySessionName}
+            placeholder={summary.sessionName}
+            placeholderTextColor="#8a8a9a"
+            maxLength={48}
+            returnKeyType="done"
+            onSubmitEditing={() => Keyboard.dismiss()}
+          />
+          <Pressable className="bg-accent rounded-xl px-4 py-2 mt-2 items-center" onPress={handleSaveSessionName}>
+            <Text className="text-text font-semibold">Save Name</Text>
+          </Pressable>
+        </View>
+
         <View className="items-center">
           <ViewShot ref={summaryCardRef} options={{ format: "png", quality: 1 }}>
             <SummaryCard
+              sessionName={summary.sessionName}
               totalVolume={summary.totalVolume}
               sessionDuration={summary.sessionDuration}
               sessionDate={summary.sessionDate}
+              sessionTimestampMs={summary.sessionTimestampMs}
               vibeLabel={summary.vibeLabel}
               exercises={summary.exercises}
               size={cardSize}
@@ -547,9 +590,6 @@ export default function WorkoutScreen() {
   }
 
   if (showCelebration && pendingSummary) {
-    const cardSize = Math.min(width - 32, 360);
-    const words = coachingMessage.split(" ");
-
     return (
       <View className="flex-1 bg-background items-center justify-center px-6">
         {showConfetti ? (
@@ -563,30 +603,29 @@ export default function WorkoutScreen() {
           </View>
         ) : null}
 
-        <Animated.View style={celebrationAnimatedStyle} className="items-center">
-          <View className="flex-row flex-wrap justify-center">
-            {words.map((word, index) => (
-              <Animated.Text
-                key={`${word}-${index}`}
-                entering={FadeInUp.delay(index * 120).duration(280)}
-                className="text-white text-3xl font-bold tracking-tighter mx-1 my-1 text-center"
-              >
-                {word}
-              </Animated.Text>
-            ))}
+        <Animated.View className="items-center">
+          <View
+            className="overflow-hidden"
+            style={{ width: SPRITE_DISPLAY_WIDTH, height: SPRITE_DISPLAY_HEIGHT }}
+          >
+            <Image
+              source={CHIBI_SPRITE}
+              style={{
+                width: SPRITE_FRAME_WIDTH * SPRITE_FRAMES * SPRITE_SCALE,
+                height: SPRITE_FRAME_HEIGHT * SPRITE_SCALE,
+                transform: [{ translateX: -spriteFrame * SPRITE_FRAME_WIDTH * SPRITE_SCALE }],
+              }}
+              resizeMode="cover"
+            />
           </View>
+          <Pressable
+            className="mt-6 bg-primary rounded-xl px-6 py-3"
+            onPress={handleCheckoutSummary}
+          >
+            <Text className="text-white text-base font-bold">Checkout Summary</Text>
+          </Pressable>
         </Animated.View>
 
-        <Animated.View style={[summaryAnimatedStyle, { position: "absolute", bottom: 48 }]}>
-          <SummaryCard
-            totalVolume={pendingSummary.totalVolume}
-            sessionDuration={pendingSummary.sessionDuration}
-            sessionDate={pendingSummary.sessionDate}
-            vibeLabel={pendingSummary.vibeLabel}
-            exercises={pendingSummary.exercises}
-            size={cardSize}
-          />
-        </Animated.View>
       </View>
     );
   }
@@ -623,31 +662,32 @@ export default function WorkoutScreen() {
   return (
     <View className="flex-1 bg-background">
         <View className="px-6 pt-5 pb-3">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-3xl font-bold text-text">Workout</Text>
-            <Pressable onPress={handleEndSession}>
-              <Text className="text-primary text-lg font-bold">End Session</Text>
-            </Pressable>
+          <View>
+            <Text className="text-3xl font-bold text-text">{sessionName}</Text>
+            <Text className="text-text text-5xl font-extrabold mt-2 tracking-wide">
+              {formatDuration(elapsedSeconds)}
+            </Text>
           </View>
 
-          <View className="flex-row justify-between mt-4 items-center">
-            <View className="flex-row items-center gap-2">
-              <Text className="text-text text-2xl font-bold tracking-wide">{formatDuration(elapsedSeconds)}</Text>
-              <Pressable
-                className="bg-background border border-accent rounded-lg px-3 py-2"
-                onPress={handleRestartTimer}
-              >
-                <Text className="text-text text-xs font-semibold">Restart</Text>
-              </Pressable>
-              <Pressable
-                className="bg-surface border border-accent rounded-lg px-3 py-2"
-                onPress={() => {
-                  void handleToggleTimerPause();
-                }}
-              >
-                <Text className="text-text text-xs font-semibold">{isTimerPaused ? "Play" : "Pause"}</Text>
-              </Pressable>
-            </View>
+          <View className="flex-row mt-3 items-center justify-between">
+            <Pressable className="rounded-lg px-4 py-2 bg-white" onPress={handleRestartTimer}>
+              <Text className="text-black text-sm font-semibold">Restart</Text>
+            </Pressable>
+            <Pressable
+              className={`rounded-lg px-4 py-2 border border-accent ${
+                isTimerPaused ? "bg-slate-700" : "bg-white"
+              }`}
+              onPress={() => {
+                void handleToggleTimerPause();
+              }}
+            >
+              <Text className={`text-sm font-semibold ${isTimerPaused ? "text-white" : "text-black"}`}>
+                {isTimerPaused ? "Play" : "Pause"}
+              </Text>
+            </Pressable>
+            <Pressable className="rounded-lg px-4 py-2 border border-accent bg-surface" onPress={handleEndSession}>
+              <Text className="text-primary text-sm font-bold">End Session</Text>
+            </Pressable>
           </View>
 
           <View className="flex-row justify-between mt-3">

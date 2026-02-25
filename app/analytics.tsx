@@ -53,6 +53,10 @@ function toDateKey(timestampMs: number): string {
   return `${year}-${month}-${day}`;
 }
 
+function getSessionLoggedAt(session: HistorySession): number {
+  return session.end_time ?? session.start_time;
+}
+
 
 function valueToY(value: number, maxValue: number, height: number, padding: number) {
   const innerHeight = Math.max(height - padding * 2, 1);
@@ -216,9 +220,9 @@ export default function AnalyticsScreen() {
       const sessions = await getSessionsForMonth(year, month);
       setMonthSessions(sessions);
 
-      const firstDateWithWorkout = sessions[0] ? toDateKey(sessions[0].start_time) : null;
+      const firstDateWithWorkout = sessions[0] ? toDateKey(getSessionLoggedAt(sessions[0])) : null;
       setSelectedDate((prev) => {
-        if (prev && sessions.some((session) => toDateKey(session.start_time) === prev)) {
+        if (prev && sessions.some((session) => toDateKey(getSessionLoggedAt(session)) === prev)) {
           return prev;
         }
         return firstDateWithWorkout;
@@ -342,7 +346,7 @@ export default function AnalyticsScreen() {
       {};
 
     for (const session of monthSessions) {
-      const key = toDateKey(session.start_time);
+      const key = toDateKey(getSessionLoggedAt(session));
       map[key] = {
         ...(map[key] ?? {}),
         marked: true,
@@ -363,7 +367,7 @@ export default function AnalyticsScreen() {
 
   const selectedDateSessions = useMemo(() => {
     if (!selectedDate) return [];
-    return monthSessions.filter((session) => toDateKey(session.start_time) === selectedDate);
+    return monthSessions.filter((session) => toDateKey(getSessionLoggedAt(session)) === selectedDate);
   }, [monthSessions, selectedDate]);
 
   const groupedRecords = useMemo(() => {
@@ -562,7 +566,9 @@ export default function AnalyticsScreen() {
                   }}
                 >
                   <View className="flex-row items-center justify-between">
-                    <Text className="text-text font-semibold">Workout • {formatSessionTime(session.start_time)}</Text>
+                    <Text className="text-text font-semibold">
+                      {session.display_name} • {formatSessionTime(getSessionLoggedAt(session))}
+                    </Text>
                     <Feather name="chevron-right" size={16} color={COLORS.textMuted} />
                   </View>
                   <View className="flex-row mt-2 items-center">
